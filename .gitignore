@@ -218,3 +218,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- AmpT ---
+.DS_Store
+.vscode/
+.pio/
+*.step
+*.stp
+*.ipt
+*.iam
+*.mp4
+*.mov
+*.HEIC
