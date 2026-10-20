@@ -230,3 +230,7 @@ __marimo__/
 *.mp4
 *.mov
 *.HEIC
+
+# 시험 사진 · 로그 (git에 안 올림)
+vision/samples/
+logs/
