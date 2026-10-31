@@ -231,6 +231,9 @@ __marimo__/
 *.mov
 *.HEIC
 
-# 시험 사진 · 로그 (git에 안 올림)
-vision/samples/
+# 판별 그림 · 로그 (시험 사진은 detect.py · cycle.py 재현에 필요해서 올린다)
+vision/samples/debug/
 logs/
+
+# 윈도우에서 arduino-cli 설치 위치 (tools/pico.py)
+.arduino/

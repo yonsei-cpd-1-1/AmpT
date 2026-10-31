@@ -1,8 +1,8 @@
-"""정면광 사진 → 머리 쪽 빨간 OPC 점 → 점 각도.
+"""사진 → 머리 쪽 OPC 점 (빨강 · 노랑 · 파랑) → 점 각도.
 
 점이 원통 표면에 있으므로 축에서 가로로 떨어진 거리 dx = r · sin θ → θ = asin(dx / r).
 θ = 0 이면 점이 카메라를 정면으로 본다. + 는 사진에서 축 오른쪽.
-점이 뒤쪽(|θ| > 90°)에 있으면 안 보인다 → None → 180° 돌려 다시 찍는다.
+유리가 비쳐서 뒤쪽 점(θ = 180°)도 정면 점처럼 보인다 → 사진 한 장으로는 앞뒤를 못 가른다.
 """
 
 import math
@@ -21,14 +21,14 @@ class Dot:
     x: float
     y: float
     area: float
+    color: str
 
 
-def red_mask(img: np.ndarray) -> np.ndarray:
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    s, v = config.RED_S_MIN, config.RED_V_MIN
-    low = cv2.inRange(hsv, (0, s, v), (config.RED_H_LOW_MAX, 255, 255))
-    high = cv2.inRange(hsv, (config.RED_H_HIGH_MIN, s, v), (180, 255, 255))
-    m = cv2.bitwise_or(low, high)
+def color_mask(hsv: np.ndarray, color: str) -> np.ndarray:
+    s, v = config.DOT_S_MIN, config.DOT_V_MIN
+    m = np.zeros(hsv.shape[:2], np.uint8)
+    for lo, hi in config.DOT_COLORS[color]:
+        m = cv2.bitwise_or(m, cv2.inRange(hsv, (lo, s, v), (hi, 255, 255)))
     return cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
 
 
@@ -43,32 +43,40 @@ def head_roi(mask: np.ndarray, m: Measure, spec: Spec) -> tuple[int, int, int, i
 
 def find_dot(img: np.ndarray, mask: np.ndarray | None = None,
              m: Measure | None = None, spec: Spec | None = None) -> Dot | None:
-    """빨간 점 하나. 실루엣 · 규격을 주면 머리 영역만 본다 (HSV 변환이 비싸서)."""
+    """색 점 하나. 실루엣 · 규격을 주면 머리 영역만 본다 (HSV 변환이 비싸서)."""
     x0, y0 = 0, 0
     crop = img
+    tinted = False
     if mask is not None and m is not None and spec is not None:
         x0, y0, x1, y1 = head_roi(mask, m, spec)
         crop = img[y0:y1, x0:x1]
-
-    red = red_mask(crop)
-    contours, _ = cv2.findContours(red, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    if crop is not img:
+        tinted = np.median(hsv[..., 1][mask[y0:y1, x0:x1] > 0]) > config.TINTED_GLASS_S_MIN
     max_area = config.DOT_MAX_AREA_FRAC * (cv2.countNonZero(mask) if mask is not None else img.size / 3)
 
     best = None
-    for c in contours:
-        area = cv2.contourArea(c)
-        if not config.DOT_MIN_AREA_PX <= area <= max_area:
+    for color in config.DOT_COLORS:
+        if tinted and color == "yellow":
             continue
-        perim = cv2.arcLength(c, True)
-        if perim == 0 or 4 * math.pi * area / perim**2 < config.DOT_MIN_CIRCULARITY:
-            continue
-        if best is None or area > best[1]:
-            best = (c, area)
+        contours, _ = cv2.findContours(color_mask(hsv, color), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for c in contours:
+            area = cv2.contourArea(c)
+            if not config.DOT_MIN_AREA_PX <= area <= max_area:
+                continue
+            perim = cv2.arcLength(c, True)
+            if perim == 0 or 4 * math.pi * area / perim**2 < config.DOT_MIN_CIRCULARITY:
+                continue
+            _, _, w, h = cv2.boundingRect(c)
+            if w > config.DOT_MAX_WIDE * h:
+                continue
+            if best is None or area > best[1]:
+                best = (c, area, color)
     if best is None:
         return None
 
     mo = cv2.moments(best[0])
-    return Dot(x0 + mo["m10"] / mo["m00"], y0 + mo["m01"] / mo["m00"], best[1])
+    return Dot(x0 + mo["m10"] / mo["m00"], y0 + mo["m01"] / mo["m00"], best[1], best[2])
 
 
 def dot_angle(dot: Dot, mask: np.ndarray) -> float | None:
