@@ -1,6 +1,6 @@
 """Pico 2 펌웨어 굽기 · 시리얼 창 · 개발 환경 점검 (맥 · 윈도우 공용).
 
-맥은 tools/pico.sh <명령>, 윈도우는 tools\\pico <명령>으로 부른다.
+맥은 tools/pico.sh <명령>, 윈도우(PowerShell · cmd)는 .\\tools\\pico <명령>으로 부른다.
 
     setup         arduino-cli로 보드 코어 · 라이브러리 설치 (처음 한 번)
     doctor        설치 · 연결 상태 점검

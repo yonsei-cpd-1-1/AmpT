@@ -29,12 +29,12 @@ tools/pico.sh doctor   # 점검
 ```bat
 :: 윈도우 — 저장소를 C:\AmpT처럼 한글 없는 경로에 clone 한다 (컴파일러가 한글 경로를 못 읽는다)
 py -3 -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-tools\pico setup
-tools\pico doctor
+.\.venv\Scripts\pip install -r requirements.txt
+.\tools\pico setup
+.\tools\pico doctor
 ```
 
-윈도우에서는 `.venv/bin/python` 대신 `.venv\Scripts\python`, `tools/pico.sh` 대신 `tools\pico`를 쓴다.
+윈도우에서는 `.venv/bin/python` 대신 `.\.venv\Scripts\python`, `tools/pico.sh` 대신 `.\tools\pico`를 쓴다.
 
 ## 자주 쓰는 명령
 
