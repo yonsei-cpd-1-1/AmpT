@@ -11,48 +11,58 @@ OPC 유리 앰플을 한 개씩 자동으로 굽혀 따고, 파편은 그 자리
 | `firmware/` | Pico 2 제어 코드 — Z · X 스텝모터, 회전 28BYJ, 클램프 N20, 로드셀, 안전 | Arduino C++ |
 | `vision/` | OPC 점·규격 인식 | Python + OpenCV |
 | `main/` | Pi에서 도는 전체 순서 프로그램 | Python |
-| `tools/` | 시험·보정·분석 스크립트 | Python |
-| `docs/` | 핀 배치표(`pins.md`), 통신 명령표(`protocol.md`) | — |
+| `tools/` | Pico 굽기 · 시리얼 창 · 촬영 스크립트 | Python · 셸 |
+| `docs/` | 핀 배치표(`pins.md`), 통신 명령표(`protocol.md`), **사용 가이드(`AmpT_사용가이드.pdf`)** | — |
 
-## 처음 세팅 (맥)
+## 처음 세팅
+
+필요한 것: Python 3.10 이상, Git, arduino-cli. 맥은 `brew install arduino-cli`, 윈도우는 공식 MSI를 쓴다.
 
 ```bash
-# Python (비전 · 순서 프로그램)
+# 맥
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-
-# Pico 펌웨어 (arduino-cli, Arduino IDE도 같은 보드·라이브러리)
-arduino-cli config add board_manager.additional_urls \
-  https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
-arduino-cli core update-index
-arduino-cli core install rp2040:rp2040
-arduino-cli lib install AccelStepper HX711
+tools/pico.sh setup    # 보드 코어 · 라이브러리 설치
+tools/pico.sh doctor   # 점검
 ```
+
+```bat
+:: 윈도우 — 저장소를 C:\AmpT처럼 한글 없는 경로에 clone 한다 (컴파일러가 한글 경로를 못 읽는다)
+py -3 -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+tools\pico setup
+tools\pico doctor
+```
+
+윈도우에서는 `.venv/bin/python` 대신 `.venv\Scripts\python`, `tools/pico.sh` 대신 `tools\pico`를 쓴다.
 
 ## 자주 쓰는 명령
 
 ```bash
 # 시험
-.venv/bin/python -m pytest vision/tests                      # 비전 (가짜 앰플 그림)
+.venv/bin/python -m pytest vision/tests main/tests           # 비전 (가짜 앰플 그림) · Pico 응답 대기
 clang++ -std=c++17 firmware/test/test_break_detector.cpp -o /tmp/tb && /tmp/tb   # 파단 판정
 
 # 비전
 .venv/bin/python vision/live.py --list                       # 카메라 번호 찾기 (아이폰 연속성 카메라 포함)
 .venv/bin/python vision/live.py --camera 1 --prefix 5ml_000  # 미리보기, b/f로 역광/정면광 저장
-.venv/bin/python vision/detect.py vision/samples/ --debug vision/samples/debug
+.venv/bin/python vision/detect.py vision/samples/ --bg vision/samples/bg_back_000_01.jpg --debug vision/samples/debug
 .venv/bin/python vision/calib.py vision/samples/calib_*.jpg -o vision/calib.npz
+bash ~/AmpT/tools/pi_shoot.sh 5ml_000                        # (Pi에서) Pi 카메라로 역광 · 정면광 한 쌍 → ~/samples/
 
-# 펌웨어
-arduino-cli compile --fqbn rp2040:rp2040:rpipico2 firmware/ampt
-arduino-cli upload  --fqbn rp2040:rp2040:rpipico2 -p /dev/cu.usbmodem* firmware/ampt
-arduino-cli monitor -p /dev/cu.usbmodem* -c baudrate=115200   # HOME, STATUS 등을 직접 쳐 보기
+# 펌웨어 — 처음 한 번은 BOOTSEL을 누른 채 USB를 꽂는다. 기구에 달 때는 bench로 방향을 본 뒤 ampt (desk 금지)
+tools/pico.sh flash bench    # 책상 시험 스케치 (스위치 · 모터 n바퀴 · 로드셀 보정)
+tools/pico.sh flash desk     # 본 펌웨어, 책상 모드 (-DDESK_TEST: PUSH 위치 제한 30 mm)
+tools/pico.sh flash ampt     # 본 펌웨어
+tools/pico.sh term           # 시리얼 창 — HOME, STATUS 등을 직접 쳐 보기, 끝내기 Ctrl+]
 
 # 전체 순서 (부품 없이 가짜 Pico로)
-.venv/bin/python main/cycle.py --fake --back <역광.jpg> --front <정면광.jpg>
+.venv/bin/python main/cycle.py --fake --back <역광.jpg> --front <정면광.jpg> --bg <빈칸.jpg>
+.venv/bin/python main/cycle.py --port auto --back <역광.jpg> --front <정면광.jpg> --bg <빈칸.jpg>   # Pico 연결
 ```
 
-- 숫자(스텝/mm, 정지값 43 N, 핀 등)는 `firmware/ampt/config.h`, 비전 조정값은 `vision/config.py` 한곳에만 있다. `TODO`는 실측 · 확인 전 값.
-- 사진(`vision/samples/`)과 로그(`logs/`)는 git에 올리지 않는다.
+- 숫자(스텝/mm, 정지값 43 N, 핀 등)는 `firmware/ampt/config.h`, 비전 조정값은 `vision/config.py`에 모았다. `TODO`는 실측 · 확인 전 값. `firmware/bench/bench.ino`는 같은 핀을 따로 적고, 앰플 치수는 `vision/specs.py`, 카메라 각도는 `main/cycle.py`에 있다.
+- 시험 사진(`vision/samples/`)은 저장소에 들어 있다. 로그(`logs/`)와 판별 그림(`vision/samples/debug/`)은 올리지 않는다.
 
 ## 규칙
 
