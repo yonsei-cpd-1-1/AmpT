@@ -1,6 +1,6 @@
 // 파단 판정 — 아두이노에 의존하지 않는 순수 C++ (맥에서 시험: firmware/test).
 // 힘이 minPeak을 넘은 뒤, 피크의 (1 - dropRatio) 아래로 confirm 샘플 연속 떨어지면 파단.
-// stopN에 닿으면 안 깨진 것으로 보고 멈춘다 (낙하쪽 조 보호, D-77).
+// stopN에 닿으면 안 깨진 것으로 보고 멈춘다 (낙하쪽 조 보호).
 #pragma once
 
 class BreakDetector {

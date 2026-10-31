@@ -157,6 +157,11 @@ void handleCommand(String line) {
   }
 
   if (cmd == "HOME") {
+    // 찾는 거리 한도를 지금 자리부터 센다 — 안 그러면 한 번 실패한 뒤엔 다음 HOME이 바로 ERR HOME
+    // (setCurrentPosition은 속도를 0으로 만들므로 setSpeed보다 먼저)
+    homed = false;
+    zAxis.setCurrentPosition(0);
+    xAxis.setCurrentPosition(0);
     zAxis.setSpeed(-Z_HOME_SPEED_MM_S * STEPS_PER_MM);
     task = HOME_Z;
   } else if (cmd == "CLAMP") {
@@ -177,10 +182,10 @@ void handleCommand(String line) {
 void readSerial() {
   while (Serial.available()) {
     char c = Serial.read();
-    if (c == '\n') {
+    if (c == '\n' || c == '\r') {  // 터미널마다 Enter가 CR · LF · CRLF로 다름 — 빈 줄은 무시됨
       handleCommand(lineBuf);
       lineBuf = "";
-    } else if (c != '\r' && lineBuf.length() < 64) {
+    } else if (lineBuf.length() < 64) {
       lineBuf += c;
     }
   }

@@ -38,26 +38,32 @@ const float X_SPEED_MM_S = 10.0;     // 빈 이동
 const float X_ACCEL_MM_S2 = 40.0;
 const float X_HOME_SPEED_MM_S = 3.0;
 const float X_APPROACH_MM = 0.0;     // TODO 원점에서 머리 닿기 직전까지 빠르게 갈 거리
-const float PUSH_SPEED_MM_S = 5.0;   // 운전 속도 (Q-10)
+const float PUSH_SPEED_MM_S = 5.0;   // 운전 속도. 파편 시험 조건(2 mm/s)과 아직 다르다
+#ifdef DESK_TEST
+// 책상 시험: 로드셀을 손으로 눌렀다 뗄 시간 (6 mm면 1.2 초뿐) — 기구에 달면 이 플래그 없이 올린다
+const float PUSH_LIMIT_MM = 30.0;
+#else
 const float PUSH_LIMIT_MM = 6.0;     // TODO 위치 제한 — 윤정호 확인 (두 겹 보호의 둘째)
+#endif
 
 // ---------- 파단 판정 ----------
-const float STOP_FORCE_N = 43.0;     // 정지값 = 1.2 × 기계 파단력 36 N (D-77)
+const float STOP_FORCE_N = 43.0;     // 정지값 = 1.2 × 기계 파단력 36 N
 const float BREAK_MIN_PEAK_N = 5.0;  // TODO 파단 시험으로 정함 — 이 힘 아래 흔들림은 무시
 const float BREAK_DROP_RATIO = 0.5;  // TODO 피크의 50 % 아래로 떨어지면 파단
-const int BREAK_CONFIRM_SAMPLES = 2; // 80 Hz에서 2샘플 = 25 ms
+const int BREAK_CONFIRM_SAMPLES = 2; // 80 Hz에서 2샘플 = 25 ms (개조 전 10 Hz면 200 ms)
 
-// ---------- 로드셀 (HX711, RATE High = 80 Hz) ----------
-const float LOADCELL_COUNTS_PER_N = 1000.0;  // TODO 추로 보정
+// ---------- 로드셀 (HX711, RATE High = 80 Hz — 산 보드는 개조 전 10 Hz 실측) ----------
+// 실측 10/31: 텀블러 396 g을 자유단에 매달아 bench `cal` (+ = 자유단 아래로). 보드를 바꾸거나 기구에 달면 다시 cal
+const float LOADCELL_COUNTS_PER_N = 45061.9;
 const int LOADCELL_TARE_SAMPLES = 5;
 
 // ---------- 회전 (28BYJ-48 + ULN2003, 하프스텝) ----------
-const float ROT_STEPS_PER_REV = 4096.0;  // TODO 실측 (기어비 때문에 4076 근처일 수 있음)
+const float ROT_STEPS_PER_REV = 4096.0;  // 실측 10/30: ROT 3600 뒤 깃발이 제자리 (4076이면 +18°)
 const float ROT_SPEED_STEPS_S = 800.0;
 const float ROT_ACCEL_STEPS_S2 = 1600.0;
 
 // ---------- 클램프 (N20, 시간으로 조임) ----------
-const int CLAMP_PWM = 200;             // 0~255, TODO N20 정지 토크 실측 후 (Q-30)
+const int CLAMP_PWM = 200;             // 0~255, TODO N20 정지 토크 실측 후
 const unsigned long CLAMP_CLOSE_MS = 1500;  // TODO
 const unsigned long CLAMP_OPEN_MS = 1500;   // TODO
 
