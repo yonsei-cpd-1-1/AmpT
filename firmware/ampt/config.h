@@ -53,8 +53,9 @@ const float BREAK_DROP_RATIO = 0.5;  // TODO 피크의 50 % 아래로 떨어지�
 const int BREAK_CONFIRM_SAMPLES = 2; // 80 Hz에서 2샘플 = 25 ms (개조 전 10 Hz면 200 ms)
 
 // ---------- 로드셀 (HX711, RATE High = 80 Hz — 산 보드는 개조 전 10 Hz 실측) ----------
-// 실측 10/31: 텀블러 396 g을 자유단에 매달아 bench `cal` (+ = 자유단 아래로). 보드를 바꾸거나 기구에 달면 다시 cal
-const float LOADCELL_COUNTS_PER_N = 45061.9;
+// 실측 11/1: 예비 HX711 + 예비 로드셀로 교체 후 512 g을 자유단에 매달아 bench `cal` (+ = 자유단 아래로).
+// (10/31 값 45061.9는 고장 의심 보드 · 로드셀 기준.) 보드를 바꾸거나 기구에 달면 다시 cal
+const float LOADCELL_COUNTS_PER_N = 49059.7;
 const int LOADCELL_TARE_SAMPLES = 5;
 
 // ---------- 회전 (28BYJ-48 + ULN2003, 하프스텝) ----------
