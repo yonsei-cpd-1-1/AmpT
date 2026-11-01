@@ -9,6 +9,10 @@
 //   tare          영점 (아무것도 안 올리고)
 //   cal 500       지금 올린 무게(g)로 보정 → config.h에 넣을 값 출력
 // 보드 LED가 0.5초마다 깜빡이면 살아 있는 것.
+// 로드셀이 이상하면 (11/1에 겪은 것):
+//   lc 줄 끝에 SATURATED  = 값이 ±8388608에 붙음 → 로드셀 선(E+ E- A+ A-)이나 HX711 보드
+//   lc 줄이 아예 안 나옴   = HX711에서 값이 안 옴 → DT(17번 핀) · SCK(19번 핀)가 바뀌었거나 VCC · GND
+// 백스페이스는 Pico 쪽에서 지워진다 (맥 화면에는 ␡ 표시가 남는다). Ctrl+C 같은 제어 문자는 버린다.
 
 #include <AccelStepper.h>
 #include <HX711.h>
@@ -28,6 +32,9 @@ const float STEPS_PER_REV = 200.0 * 16;
 const float SPEED_REV_S = 2.0;   // 120 rpm
 const float ACCEL_REV_S2 = 2.0;
 const float G = 9.80665;
+const long SATURATED_COUNTS = 8300000;  // ampt/config.h LOADCELL_SATURATED_COUNTS와 같게
+const char* SATURATED_HINT = "SATURATED: check loadcell wires E+ E- A+ A-, or HX711 board";
+const char* NODATA_HINT = "no data from HX711: check DT=GP13 (pin 17), SCK=GP14 (pin 19), VCC=pin 36, GND";
 
 AccelStepper zAxis(AccelStepper::DRIVER, PIN_Z_STEP, PIN_Z_DIR);
 AccelStepper xAxis(AccelStepper::DRIVER, PIN_X_STEP, PIN_X_DIR);
@@ -38,11 +45,16 @@ bool printLc = false;
 AccelStepper* spinning = nullptr;
 int lastIo = -1;
 long tareCounts = 0;
+bool tared = false;
 float countsPerN = 1000.0;  // cal 전 임시값
 unsigned long rateStartMs = 0;
 int rateSamples = 0;
 float rateHz = 0;
+unsigned long lastLcMs = 0;  // lc가 켜진 뒤 마지막으로 값이 온 때
+bool lcHintShown = false;
 String lineBuf;
+
+bool saturated(long counts) { return labs(counts) >= SATURATED_COUNTS; }
 
 int readIo() {
   return (digitalRead(PIN_LIM_Z) == LOW) | (digitalRead(PIN_LIM_X) == LOW) << 1 | (digitalRead(PIN_START) == LOW) << 2;
@@ -96,27 +108,40 @@ void handleCommand(String line) {
     Serial.println("stopped");
   } else if (cmd == "lc") {
     printLc = !printLc;
-    rateStartMs = millis();
+    rateStartMs = lastLcMs = millis();
     rateSamples = 0;
+    lcHintShown = false;
     Serial.println(printLc ? "loadcell ON" : "loadcell OFF");
   } else if (cmd == "tare") {
     long c = averageCounts(10);
     if (c == LONG_MIN) {
-      Serial.println("ERR LOADCELL (check DT=GP13, SCK=GP14, VCC=3V3, GND)");
+      Serial.printf("ERR LOADCELL (%s)\n", NODATA_HINT);
+      return;
+    }
+    if (saturated(c)) {
+      Serial.printf("ERR LOADCELL %s\n", SATURATED_HINT);
       return;
     }
     tareCounts = c;
+    tared = true;
     Serial.printf("tare = %ld counts\n", tareCounts);
   } else if (cmd == "cal") {
     float grams = arg.toFloat();
-    long c = averageCounts(10);
-    if (grams <= 0 || c == LONG_MIN) {
+    if (grams <= 0 || !tared) {
       Serial.println("usage: tare (empty) -> put weight -> cal <grams>");
+      return;
+    }
+    long c = averageCounts(10);
+    if (c == LONG_MIN || saturated(c)) {
+      Serial.printf("ERR LOADCELL (%s)\n", c == LONG_MIN ? NODATA_HINT : SATURATED_HINT);
       return;
     }
     countsPerN = (c - tareCounts) / (grams / 1000.0 * G);
     Serial.printf("counts = %ld, weight = %.1f g = %.3f N\n", c - tareCounts, grams, grams / 1000.0 * G);
     Serial.printf(">> config.h: const float LOADCELL_COUNTS_PER_N = %.1f;\n", countsPerN);
+    // 11/1 실측은 45061.9 · 49059.7. 음수면 PUSH 힘이 −로 읽혀 43 N 정지가 안 걸린다
+    if (countsPerN < 0) Serial.println("WARN negative: if this load is the PUSH direction, swap A+ and A-");
+    else if (countsPerN < 10000) Serial.println("WARN too small: weight touching something, or loadcell not responding");
   } else {
     Serial.println("? unknown — type help");
   }
@@ -128,7 +153,9 @@ void readSerial() {
     if (c == '\n' || c == '\r') {
       handleCommand(lineBuf);
       lineBuf = "";
-    } else if (lineBuf.length() < 64) {
+    } else if (c == '\b' || c == 0x7F) {  // 백스페이스 (맥 0x7F, 윈도우 0x08) → 한 글자 지움
+      if (lineBuf.length() > 0) lineBuf.remove(lineBuf.length() - 1);
+    } else if (c >= 0x20 && c < 0x7F && lineBuf.length() < 64) {  // 제어 문자 · 한글은 버림
       lineBuf += c;
     }
   }
@@ -168,7 +195,8 @@ void loop() {
   }
 
   if (printLc && loadcell.is_ready()) {
-    long c = loadcell.read();
+    long c = lround(loadcell.read());
+    lastLcMs = millis();
     rateSamples++;
     unsigned long dt = millis() - rateStartMs;
     if (dt >= 2000) {
@@ -177,7 +205,11 @@ void loop() {
       rateSamples = 0;
     }
     float n = (c - tareCounts) / countsPerN;
-    Serial.printf("raw %ld  force %.2f N (%.0f g)  rate %.0f Hz\n", c, n, n / G * 1000.0, rateHz);
+    Serial.printf("raw %ld  force %.2f N (%.0f g)  rate %.0f Hz%s%s\n", c, n, n / G * 1000.0, rateHz,
+                  saturated(c) ? "  << " : "", saturated(c) ? SATURATED_HINT : "");
+  } else if (printLc && !lcHintShown && millis() - lastLcMs > 1500) {
+    Serial.println(NODATA_HINT);  // 11/1: DT · SCK를 바꿔 꽂았을 때 줄이 하나도 안 나왔다
+    lcHintShown = true;
   }
 
   static unsigned long lastBlink = 0;

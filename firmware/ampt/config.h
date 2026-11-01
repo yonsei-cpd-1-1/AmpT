@@ -38,9 +38,11 @@ const float X_SPEED_MM_S = 10.0;     // 빈 이동
 const float X_ACCEL_MM_S2 = 40.0;
 const float X_HOME_SPEED_MM_S = 3.0;
 const float X_APPROACH_MM = 0.0;     // TODO 원점에서 머리 닿기 직전까지 빠르게 갈 거리
-const float PUSH_SPEED_MM_S = 5.0;   // 운전 속도. 파편 시험 조건(2 mm/s)과 아직 다르다
+// 11/1 5 → 2 mm/s: 파편 시험 조건(B · C = 2 mm/s)과 맞추고, 로드셀이 10 Hz인 동안
+// 최대 힘 → 판정 사이에 더 미는 거리를 줄인다 (0.29초 × 5 mm/s = 1.4 mm → × 2 mm/s = 0.6 mm)
+const float PUSH_SPEED_MM_S = 2.0;
 #ifdef DESK_TEST
-// 책상 시험: 로드셀을 손으로 눌렀다 뗄 시간 (6 mm면 1.2 초뿐) — 기구에 달면 이 플래그 없이 올린다
+// 책상 시험: 로드셀을 손으로 눌렀다 뗄 시간 (30 mm ÷ 2 mm/s = 15초) — 기구에 달면 이 플래그 없이 올린다
 const float PUSH_LIMIT_MM = 30.0;
 #else
 const float PUSH_LIMIT_MM = 6.0;     // TODO 위치 제한 — 윤정호 확인 (두 겹 보호의 둘째)
@@ -57,6 +59,10 @@ const int BREAK_CONFIRM_SAMPLES = 2; // 80 Hz에서 2샘플 = 25 ms (개조 전 
 // (10/31 값 45061.9는 고장 의심 보드 · 로드셀 기준.) 보드를 바꾸거나 기구에 달면 다시 cal
 const float LOADCELL_COUNTS_PER_N = 49059.7;
 const int LOADCELL_TARE_SAMPLES = 5;
+// HX711 끝값은 ±8388608. 값이 이 근처에 붙으면 로드셀 선(E± · A±)이 빠졌거나 보드 고장이라
+// 힘을 못 읽는다 → PUSH를 하지 않고 ERR LOADCELL (11/1 실제로 겪음: 힘이 0.00 N으로만 찍혔다).
+// 정상이면 영점(지금 약 −60만)에 43 N(약 210만)을 더해도 300만 아래라 여기까지 오지 않는다
+const long LOADCELL_SATURATED_COUNTS = 8300000;
 
 // ---------- 회전 (28BYJ-48 + ULN2003, 하프스텝) ----------
 const float ROT_STEPS_PER_REV = 4096.0;  // 실측 10/30: ROT 3600 뒤 깃발이 제자리 (4076이면 +18°)
@@ -64,6 +70,8 @@ const float ROT_SPEED_STEPS_S = 800.0;
 const float ROT_ACCEL_STEPS_S2 = 1600.0;
 
 // ---------- 클램프 (N20, 시간으로 조임) ----------
+// 11/1 책상 (기구 없이): N20 → TC1508A MOTOR-A, 6.0 V. CLAMP 1 = 축을 축 쪽에서 볼 때 시계 방향.
+// 이게 닫히는 방향인지는 기구에 달고 확인 — 반대면 MOTOR-A의 두 선을 서로 바꾼다 (코드는 그대로)
 const int CLAMP_PWM = 200;             // 0~255, TODO N20 정지 토크 실측 후
 const unsigned long CLAMP_CLOSE_MS = 1500;  // TODO
 const unsigned long CLAMP_OPEN_MS = 1500;   // TODO

@@ -55,9 +55,9 @@ class FakePico:
 
     def _push(self):
         t, x, f = 0.0, 0.0, 0.0
-        while f < self.break_n:  # 80 Hz, 5 mm/s, 접촉 후 힘이 선형으로 오른다고 가정
+        while f < self.break_n:  # 80 Hz, 2 mm/s (config.h PUSH_SPEED_MM_S), 접촉 후 힘이 선형으로 오른다고 가정
             t += 12.5
-            x += 5 * 0.0125
+            x += 2 * 0.0125
             f = max(0.0, (x - 0.5) * 30)
             self.out.append(f"FORCE {t:.1f},{min(f, self.break_n):.2f},{x:.3f}")
         for f in (3.0, 0.8):
