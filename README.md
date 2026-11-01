@@ -12,7 +12,7 @@ OPC 유리 앰플을 한 개씩 자동으로 굽혀 따고, 파편은 그 자리
 | `vision/` | OPC 점·규격 인식 | Python + OpenCV |
 | `main/` | Pi에서 도는 전체 순서 프로그램 | Python |
 | `tools/` | Pico 굽기 · 시리얼 창 · 촬영 스크립트 | Python · 셸 |
-| `docs/` | 핀 배치표(`pins.md`), 통신 명령표(`protocol.md`), **사용 가이드(`AmpT_사용가이드.pdf`)** | — |
+| `docs/` | 핀 배치표(`pins.md`), 통신 명령표(`protocol.md`), 시험 기록(`testlog.md`), **사용 가이드(`AmpT_사용가이드.pdf`)** | — |
 
 ## 처음 세팅
 
