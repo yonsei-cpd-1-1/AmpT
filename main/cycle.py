@@ -26,6 +26,9 @@ from pico_link import FakePico, PicoError, SerialLink, pico_ports, wait_all, wai
 
 PUSHER_FROM_CAMERA_DEG = 29.0  # TODO 카메라는 −X(푸셔 쪽)에서 29° — 부호는 실물에서 확인
 HOLDER_STEP_DEG = 6.0           # 홀더 톱니 한 칸
+# HOME이 가장 오래 걸릴 때: Z 70 mm ÷ 5 mm/s = 14초 + X (desk 50 mm · ampt 26 mm) ÷ 3 mm/s = 최대 약 17초.
+# 기본 30초로 기다리면 desk 빌드에서 Pico의 ERR HOME보다 '시간 초과'가 먼저 났다 (11/1)
+HOME_TIMEOUT_S = 40.0
 LOG_DIR = ROOT / "logs"
 
 
@@ -144,7 +147,7 @@ def main():
 
     try:
         print("[0] 원점")
-        command(link, "HOME", "OK HOME")
+        command(link, "HOME", "OK HOME", timeout=HOME_TIMEOUT_S)
         row = run_cycle(link, back, front, args.fake, bg)
     except PicoError as e:
         print(f"  ✋ 정지: {e}")

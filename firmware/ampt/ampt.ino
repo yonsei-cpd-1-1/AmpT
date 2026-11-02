@@ -78,12 +78,20 @@ void startMoveZ(float zMm, const char* reply) {
   task = MOVE_Z;
 }
 
+// 값이 HX711 끝값에 붙음 = 로드셀 선이 빠졌거나 보드 고장 (config.h LOADCELL_SATURATED_COUNTS)
+bool loadcellSaturated(long counts) { return labs(counts) >= LOADCELL_SATURATED_COUNTS; }
+
 void startPush() {
   if (!loadcell.wait_ready_timeout(500)) {
     Serial.println("ERR LOADCELL");
     return;
   }
-  tareCounts = loadcell.read_average(LOADCELL_TARE_SAMPLES);
+  long tare = lround(loadcell.read_average(LOADCELL_TARE_SAMPLES));
+  if (loadcellSaturated(tare)) {  // 이대로 밀면 힘이 늘 0으로 읽혀 43 N 정지가 안 걸린다
+    Serial.println("ERR LOADCELL");
+    return;
+  }
+  tareCounts = tare;
   detector.reset();
   xAxis.moveTo(mmToSteps(X_APPROACH_MM));
   task = PUSH_APPROACH;
@@ -185,7 +193,11 @@ void readSerial() {
     if (c == '\n' || c == '\r') {  // 터미널마다 Enter가 CR · LF · CRLF로 다름 — 빈 줄은 무시됨
       handleCommand(lineBuf);
       lineBuf = "";
-    } else if (lineBuf.length() < 64) {
+    } else if (c == '\b' || c == 0x7F) {  // 백스페이스 (맥은 0x7F, 윈도우는 0x08) → 한 글자 지움
+      if (lineBuf.length() > 0) lineBuf.remove(lineBuf.length() - 1);
+    } else if (c >= 0x20 && c < 0x7F && lineBuf.length() < 64) {
+      // 보이는 영문 · 숫자 · 기호만 받는다. Ctrl+C 같은 제어 문자나 한글 입력이 섞여
+      // 다음 명령이 ERR UNKNOWN이 되던 것을 막는다
       lineBuf += c;
     }
   }
@@ -204,7 +216,12 @@ void runPush() {
   xAxis.runSpeed();
   if (loadcell.is_ready()) {
     lastSampleMs = millis();
-    float forceN = (loadcell.read() - tareCounts) / LOADCELL_COUNTS_PER_N;
+    long raw = lround(loadcell.read());
+    if (loadcellSaturated(raw)) {  // 밀던 중에 선이 빠짐 → 멈추고 후퇴
+      finishPush("ERR LOADCELL");
+      return;
+    }
+    float forceN = (raw - tareCounts) / LOADCELL_COUNTS_PER_N;
     float xMm = stepsToMm(xAxis.currentPosition());
     Serial.printf("FORCE %lu,%.2f,%.3f\n", millis() - pushStartMs, forceN, xMm);
 
