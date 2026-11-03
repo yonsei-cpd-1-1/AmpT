@@ -29,7 +29,7 @@ HOLDER_STEP_DEG = 6.0           # 홀더 톱니 한 칸
 # HOME이 가장 오래 걸릴 때: Z 70 mm ÷ 5 mm/s = 14초 + X (desk 50 mm · ampt 26 mm) ÷ 3 mm/s = 최대 약 17초.
 # 기본 30초로 기다리면 desk 빌드에서 Pico의 ERR HOME보다 '시간 초과'가 먼저 났다 (11/1)
 HOME_TIMEOUT_S = 40.0
-LOG_DIR = ROOT / "logs"
+LOG_DIR = ROOT / "logs"  # 실물 시험 기록 — git에 올린다. --fake는 logs/fake/ (안 올림)
 
 
 def target_rotation(dot_deg: float) -> float:
@@ -140,7 +140,10 @@ def main():
             raise SystemExit("Pico 포트를 못 찾았다 — USB 케이블 확인")
         port = found[0]
 
-    LOG_DIR.mkdir(exist_ok=True)
+    global LOG_DIR
+    if args.fake:
+        LOG_DIR = LOG_DIR / "fake"
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
     link = FakePico(args.fake_break) if args.fake else SerialLink(port)
     if not args.fake:
         time.sleep(2)  # Pico USB 재연결 대기

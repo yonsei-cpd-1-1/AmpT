@@ -231,9 +231,9 @@ __marimo__/
 *.mov
 *.HEIC
 
-# 판별 그림 · 로그 (시험 사진은 detect.py · cycle.py 재현에 필요해서 올린다)
+# 판별 그림 · 가짜 Pico 로그 (시험 사진과 실물 시험 기록 logs/는 재현 · 근거용으로 올린다)
 vision/samples/debug/
-logs/
+logs/fake/
 
 # 윈도우에서 arduino-cli 설치 위치 (tools/pico.py)
 .arduino/
