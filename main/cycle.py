@@ -25,7 +25,8 @@ from detect import analyze  # noqa: E402
 from pico_link import FakePico, PicoError, SerialLink, pico_ports, wait_all, wait_for  # noqa: E402
 
 PUSHER_FROM_CAMERA_DEG = 29.0  # TODO 카메라는 −X(푸셔 쪽)에서 29° — 부호는 실물에서 확인
-HOLDER_STEP_DEG = 6.0           # 홀더 톱니 한 칸
+# 11/3 CAD v2.5.22: 홀더는 자석 마찰 클러치로 28BYJ와 1:1로 돈다 (톱니 없음) → 6° 반올림을 없앰.
+# 28BYJ 한 칸 = 360 / 4096 ≈ 0.09°라 0.1° 단위로 보낸다. 돌린 뒤 다시 찍어 확인하는 것은 Pi 카메라 촬영을 붙일 때
 # HOME이 가장 오래 걸릴 때: Z 70 mm ÷ 5 mm/s = 14초 + X (desk 50 mm · ampt 26 mm) ÷ 3 mm/s = 최대 약 17초.
 # 기본 30초로 기다리면 desk 빌드에서 Pico의 ERR HOME보다 '시간 초과'가 먼저 났다 (11/1)
 HOME_TIMEOUT_S = 40.0
@@ -33,10 +34,10 @@ LOG_DIR = ROOT / "logs"  # 실물 시험 기록 — git에 올린다. --fake는 
 
 
 def target_rotation(dot_deg: float) -> float:
-    """점을 푸셔 쪽으로 보내는 회전각 (홀더 톱니 단위로 반올림)."""
+    """점을 푸셔 쪽으로 보내는 회전각 (°, 0.1° 단위)."""
     rot = PUSHER_FROM_CAMERA_DEG - dot_deg
     rot = (rot + 180) % 360 - 180  # -180 ~ 180, 가까운 쪽으로
-    return round(rot / HOLDER_STEP_DEG) * HOLDER_STEP_DEG
+    return round(rot, 1)
 
 
 def command(link, line: str, *expect: str, **kw) -> str:
@@ -71,7 +72,7 @@ def run_cycle(link, back, front, fake: bool, bg=None) -> dict:
         return {**row, "result": "SKIP_DOT"}
     rot = target_rotation(r.angle)
     row.update(dot_deg=round(r.angle, 1), rot_deg=rot)
-    print(f"  점 {r.angle:+.1f}° → 회전 {rot:+.0f}°")
+    print(f"  점 {r.angle:+.1f}° → 회전 {rot:+.1f}°")
     command(link, f"ROT {rot:.1f}", "OK ROT")
 
     # 2. 이송 (사람)

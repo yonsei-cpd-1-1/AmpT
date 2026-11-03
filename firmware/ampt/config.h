@@ -28,8 +28,9 @@ const int PIN_START = 21;
 const float MICROSTEPS = 16;
 const float STEPS_PER_MM = 200.0 * MICROSTEPS / 1.5;  // 2133.3
 
-const float Z_TRAVEL_MM = 60.0;      // TODO 윤정호 CAD로 확인 (Z 행정)
-const float Z_TOP_NOTCH_MM = 62.0;   // TODO Z가 맨 위일 때 푸셔가 미는 노치 높이
+// 아래 기구 값 4개는 실측 전 임시값. CAD v2.5.22(11/3) 참고값을 옆에 적어 둠 — 출력 · 조립한 실물은 다를 수 있어 실측으로 정한다
+const float Z_TRAVEL_MM = 60.0;      // TODO 실측. CAD: 원점 아래 약 44.5에서 Z 너트가 커플러에 닿음 → 40 이하 (1 mL에 필요한 건 약 37.5)
+const float Z_TOP_NOTCH_MM = 62.0;   // TODO 실측. Z가 맨 위일 때 푸셔가 미는 노치 높이. CAD: 62~63 (푸셔 높이 = 노치 + 15)
 const float Z_SPEED_MM_S = 10.0;
 const float Z_ACCEL_MM_S2 = 40.0;
 const float Z_HOME_SPEED_MM_S = 5.0;
@@ -37,7 +38,7 @@ const float Z_HOME_SPEED_MM_S = 5.0;
 const float X_SPEED_MM_S = 10.0;     // 빈 이동
 const float X_ACCEL_MM_S2 = 40.0;
 const float X_HOME_SPEED_MM_S = 3.0;
-const float X_APPROACH_MM = 0.0;     // TODO 원점에서 머리 닿기 직전까지 빠르게 갈 거리
+const float X_APPROACH_MM = 0.0;     // TODO 실측. 원점에서 머리 닿기 직전까지 빠르게 갈 거리. CAD: 닿는 거리 d − 1.5 ≈ 8.5 (d = 10.1 5 mL · 10.4 1 mL)
 // 11/1 5 → 2 mm/s: 파편 시험 조건(B · C = 2 mm/s)과 맞추고, 로드셀이 10 Hz인 동안
 // 최대 힘 → 판정 사이에 더 미는 거리를 줄인다 (0.29초 × 5 mm/s = 1.4 mm → × 2 mm/s = 0.6 mm)
 const float PUSH_SPEED_MM_S = 2.0;
@@ -45,7 +46,7 @@ const float PUSH_SPEED_MM_S = 2.0;
 // 책상 시험: 로드셀을 손으로 눌렀다 뗄 시간 (30 mm ÷ 2 mm/s = 15초) — 기구에 달면 이 플래그 없이 올린다
 const float PUSH_LIMIT_MM = 30.0;
 #else
-const float PUSH_LIMIT_MM = 6.0;     // TODO 위치 제한 — 윤정호 확인 (두 겹 보호의 둘째)
+const float PUSH_LIMIT_MM = 6.0;     // TODO 실측. 위치 제한 (두 겹 보호의 둘째). CAD: d + 2.8 ≈ 12.9, 최대 13.2 — 6이면 유리에 닿지 않는다
 #endif
 
 // ---------- 파단 판정 ----------
@@ -72,7 +73,9 @@ const float ROT_ACCEL_STEPS_S2 = 1600.0;
 // ---------- 클램프 (N20, 시간으로 조임) ----------
 // 11/1 책상 (기구 없이): N20 → TC1508A MOTOR-A, 6.0 V. CLAMP 1 = 축을 축 쪽에서 볼 때 시계 방향.
 // 이게 닫히는 방향인지는 기구에 달고 확인 — 반대면 MOTOR-A의 두 선을 서로 바꾼다 (코드는 그대로)
-const int CLAMP_PWM = 200;             // 0~255, TODO N20 정지 토크 실측 후
+// 11/3 200 → 128: 6 V × 128/255 ≈ 3 V로 약하게 시작. N20을 끝까지 조이면 190~310 N(계산, CAD v2.5.9)이라 앰플 · 출력 조가 상할 수 있다.
+// 앰플이 미끄러지면 올린다 (CAD v2.5.22 README · 팀 전장 가이드 11/2와 같은 권장)
+const int CLAMP_PWM = 128;             // 0~255, TODO N20 정지 토크 실측 후
 const unsigned long CLAMP_CLOSE_MS = 1500;  // TODO
 const unsigned long CLAMP_OPEN_MS = 1500;   // TODO
 
