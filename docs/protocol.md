@@ -7,12 +7,14 @@ Pico는 보이는 영문 · 숫자 · 기호만 받고 제어 문자(Ctrl+C 등)
 
 | Pi → Pico | 뜻 | Pico → Pi |
 |---|---|---|
-| `HOME` | Z · X 원점 (리밋 스위치). 회전축은 원점이 없다 | `OK HOME` / `ERR HOME` |
-| `ZTOP` | Z 캐리지 맨 위 (카트리지 밀기 전 필수) | `OK ZTOP` |
-| `INDEX` | 카트리지 1칸 — **2차 발표 시제품에는 없음** (손으로 민다) | `ERR NOTSUPPORTED` |
+| `HOME` | Z · X 원점 (리밋 스위치). Z는 스위치에 닿아 0을 잡은 뒤 바로 `Z_PARK_MM`(5 mm) 내려오고, 그다음 X도 스위치에 닿은 뒤 `X_PARK_MM`(5 mm) 앞으로 나온다. 회전축은 원점이 없다 | `OK HOME` / `ERR HOME` |
+| `ZTOP` | Z 캐리지 맨 위 = 원점 스위치보다 `Z_PARK_MM`(5 mm) 아래 (카트리지 밀기 전 필수). 스위치 높이까지는 `HOME` 때만 간다 | `OK ZTOP` |
+| `INDEX` | 카트리지 1칸 — **2차 발표 시제품에는 없음** (손으로 민다) | `ERR XMAX` | X가 마지노선 `X_HARD_MAX_MM`(원점 스위치에서 16.25 mm, 이보다 앞은 MGN 블록이 레일을 벗어남)을 넘음 → 비상정지 (드라이버 끔). `RESET` → `HOME`. 정상이면 `PUSH_LIMIT_MM`에서 먼저 멈추므로 나오지 않는다 |
+| `ERR NOTSUPPORTED` |
 | `LIFT 42.0` | Z 캐리지를 규격 높이로 (노치 높이 기준, mm) | `OK LIFT` |
 | `ROT 137.0` | 대기 칸 홀더 회전 (°, 상대각). `LIFT` 등과 동시에 실행 | `OK ROT` |
 | `CLAMP 1` / `CLAMP 0` | 두 조 닫기 / 열기 (N20) | `OK CLAMP` |
+| `CJOG <ms> [pwm]` | **시험용** 클램프 조금씩: + 닫기 · − 열기 (최대 1000 ms, pwm 기본 `CLAMP_PWM`), `CJOG 0` = 누적 지우기. HOME 없이 됨 | `OK CJOG +50 ms pwm 128, total +350 ms` |
 | `PUSH` | 파단 시도 | `BROKE 36.2` (파단력 N) / `NOBREAK` (정지값 43 N) / `NOBREAK LIMIT` (위치 제한) |
 | `VAC 1` / `VAC 0` | 청소기 켜기 / 끄기 | `OK VAC` |
 | `STATUS` | 상태 묻기 | `STATUS IDLE` / `STATUS BUSY` / `STATUS STOPPED` |
@@ -41,7 +43,8 @@ FORCE 96,3.41,0.062
 | `ERR BUSY` | 앞 명령이 아직 동작 중 (`ROT`는 다른 축과 동시에 돌고, `VAC` · `STATUS` · `RESET` · `INDEX`는 언제나 받는다) |
 | `ERR STOPPED` | 비상정지 · 덮개 열림 상태. `RESET` 전에는 아무것도 안 함 |
 | `ERR NOTHOMED` | `HOME` 전에 `ZTOP` · `LIFT` · `PUSH`를 보냄 (`RESET` 뒤에도 다시 `HOME`) |
-| `ERR RANGE` | `LIFT` 높이가 Z 행정 밖 |
+| `ERR RANGE` | `LIFT` 높이가 Z 행정 밖 (원점에서 `Z_PARK_MM` ~ `Z_TRAVEL_MM`) |
 | `ERR HOME` | 원점 찾다가 리밋 스위치를 못 만남 |
+| `ERR LIMIT` | `LIFT` · `ZTOP`으로 올라가던 중 Z 원점 스위치가 눌림 = 위치가 어긋남 (부딪혀 스텝을 잃음 등). 그 자리에서 멈춤, 다시 `HOME` 필요. PUSH 후퇴는 `X_PARK_MM`까지만 물러나고, 그 사이 X 스위치가 눌리면 멈춘 뒤 결과 줄은 그대로 보내되 HOME을 풀어 다음 `ZTOP` 등이 `ERR NOTHOMED`가 된다 |
 | `ERR LOADCELL` | 로드셀 값이 안 오거나, 값이 HX711 끝값(±8388608)에 붙음 = 로드셀 선 빠짐 · 보드 고장. `PUSH`를 받았을 때면 밀지 않고 바로, 밀던 중이면 멈추고 후퇴한 뒤 보냄 |
 | `ERR NOTSUPPORTED` | `INDEX`처럼 시제품에 없는 기능 |

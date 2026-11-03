@@ -16,7 +16,7 @@ HX711 loadcell;
 BreakDetector detector(STOP_FORCE_N, BREAK_MIN_PEAK_N, BREAK_DROP_RATIO, BREAK_CONFIRM_SAMPLES);
 
 // 한 번에 하나만 도는 일 (ROT는 따로 — 다른 축과 동시에 돈다)
-enum Task { IDLE, HOME_Z, HOME_X, MOVE_Z, PUSH_APPROACH, PUSHING, RETREAT, CLAMPING };
+enum Task { IDLE, HOME_Z, HOME_Z_BACK, HOME_X, HOME_X_BACK, MOVE_Z, PUSH_APPROACH, PUSHING, RETREAT, CLAMPING };
 Task task = IDLE;
 
 bool homed = false;
@@ -97,12 +97,45 @@ void startPush() {
   task = PUSH_APPROACH;
 }
 
+// close = 닫는 쪽. CLAMP_DIR_INVERT면 두 선을 바꾼 것과 같다
+void driveClamp(bool close, int pwm) {
+  if (close != CLAMP_DIR_INVERT) clampMotor(pwm, 0);
+  else clampMotor(0, pwm);
+}
+
 void startClamp(bool close) {
-  if (close) clampMotor(CLAMP_PWM, 0);
-  else clampMotor(0, CLAMP_PWM);
+  driveClamp(close, CLAMP_PWM);
   clampStartMs = millis();
   clampDurationMs = close ? CLAMP_CLOSE_MS : CLAMP_OPEN_MS;
   doneReply = "OK CLAMP";
+  task = CLAMPING;
+}
+
+// 시험용: CJOG <ms> [pwm] — + 닫기 · − 열기, 0 = 누적 시간 지우기. 누적(닫은 ms − 연 ms)을 알려 줘서
+// 다 열린 자리 → 앰플에 닿는 자리까지의 시간을 CLAMP_CLOSE_MS로 옮겨 적는다 (11/4)
+long clampJogTotalMs = 0;
+char clampJogReply[48];
+
+void startClampJog(String arg) {
+  arg.trim();
+  int sp = arg.indexOf(' ');
+  long ms = (sp < 0 ? arg : arg.substring(0, sp)).toInt();
+  int pwm = sp < 0 ? CLAMP_PWM : arg.substring(sp + 1).toInt();
+  if (ms == 0) {
+    clampJogTotalMs = 0;
+    Serial.println("OK CJOG total 0 ms");
+    return;
+  }
+  if ((unsigned long)labs(ms) > CLAMP_JOG_MAX_MS || pwm < 1 || pwm > 255) {
+    Serial.printf("ERR RANGE (1~%lu ms, pwm 1~255)\n", CLAMP_JOG_MAX_MS);
+    return;
+  }
+  driveClamp(ms > 0, pwm);
+  clampStartMs = millis();
+  clampDurationMs = labs(ms);
+  clampJogTotalMs += ms;
+  snprintf(clampJogReply, sizeof(clampJogReply), "OK CJOG %+ld ms pwm %d, total %+ld ms", ms, pwm, clampJogTotalMs);
+  doneReply = clampJogReply;
   task = CLAMPING;
 }
 
@@ -154,7 +187,7 @@ void handleCommand(String line) {
     return;
   }
 
-  bool known = cmd == "HOME" || cmd == "ZTOP" || cmd == "LIFT" || cmd == "CLAMP" || cmd == "PUSH";
+  bool known = cmd == "HOME" || cmd == "ZTOP" || cmd == "LIFT" || cmd == "CLAMP" || cmd == "CJOG" || cmd == "PUSH";
   if (!known) {
     Serial.println("ERR UNKNOWN " + cmd);
     return;
@@ -174,13 +207,15 @@ void handleCommand(String line) {
     task = HOME_Z;
   } else if (cmd == "CLAMP") {
     startClamp(arg.toInt() == 1);
+  } else if (cmd == "CJOG") {
+    startClampJog(arg);
   } else if (!homed) {
     Serial.println("ERR NOTHOMED");
   } else if (cmd == "ZTOP") {
-    startMoveZ(0, "OK ZTOP");
+    startMoveZ(Z_PARK_MM, "OK ZTOP");  // 스위치보다 Z_PARK_MM 아래 (config.h)
   } else if (cmd == "LIFT") {
     float zMm = Z_TOP_NOTCH_MM - arg.toFloat();
-    if (zMm < 0 || zMm > Z_TRAVEL_MM) Serial.println("ERR RANGE");
+    if (zMm < Z_PARK_MM || zMm > Z_TRAVEL_MM) Serial.println("ERR RANGE");
     else startMoveZ(zMm, "OK LIFT");
   } else if (cmd == "PUSH") {
     startPush();
@@ -208,11 +243,17 @@ void readSerial() {
 void finishPush(const char* result) {
   strncpy(resultReply, result, sizeof(resultReply) - 1);
   haltAxis(xAxis);
-  xAxis.moveTo(0);
+  xAxis.moveTo(mmToSteps(X_PARK_MM));  // 스위치보다 X_PARK_MM 앞까지만 (config.h)
   task = RETREAT;
 }
 
 void runPush() {
+  // 위치 제한은 로드셀 샘플(10 Hz)을 기다리지 않고 매 루프, 한 스텝 내딛기 전에 본다
+  // (전에는 샘플이 올 때만 봐서 0.2~0.4 mm 더 나갈 수 있었다)
+  if (xAxis.currentPosition() >= mmToSteps(PUSH_LIMIT_MM)) {
+    finishPush("NOBREAK LIMIT");
+    return;
+  }
   xAxis.runSpeed();
   if (loadcell.is_ready()) {
     lastSampleMs = millis();
@@ -232,8 +273,6 @@ void runPush() {
       finishPush(buf);
     } else if (r == BreakDetector::NOBREAK) {
       finishPush("NOBREAK");
-    } else if (xMm >= PUSH_LIMIT_MM) {
-      finishPush("NOBREAK LIMIT");
     }
   } else if (millis() - lastSampleMs > 200) {
     finishPush("ERR LOADCELL");
@@ -248,21 +287,26 @@ void runTask() {
       zAxis.runSpeed();
       if (digitalRead(PIN_LIM_Z) == LOW) {
         zAxis.setCurrentPosition(0);
-        xAxis.setSpeed(-X_HOME_SPEED_MM_S * STEPS_PER_MM);
-        task = HOME_X;
+        zAxis.moveTo(mmToSteps(Z_PARK_MM));  // 스위치에서 바로 내려온다 (11/3 박도울)
+        task = HOME_Z_BACK;
       } else if (zAxis.currentPosition() < -mmToSteps(Z_TRAVEL_MM + 10)) {
         haltAxis(zAxis);
         task = IDLE;
         Serial.println("ERR HOME");
       }
       break;
+    case HOME_Z_BACK:
+      if (!zAxis.run()) {
+        xAxis.setSpeed(-X_HOME_SPEED_MM_S * STEPS_PER_MM);
+        task = HOME_X;
+      }
+      break;
     case HOME_X:
       xAxis.runSpeed();
       if (digitalRead(PIN_LIM_X) == LOW) {
         xAxis.setCurrentPosition(0);
-        homed = true;
-        task = IDLE;
-        Serial.println("OK HOME");
+        xAxis.moveTo(mmToSteps(X_PARK_MM));  // 스위치에서 바로 앞으로 나온다 (11/3 박도울)
+        task = HOME_X_BACK;
       } else if (xAxis.currentPosition() < -mmToSteps(PUSH_LIMIT_MM + 20)) {
         haltAxis(xAxis);
         task = IDLE;
@@ -270,7 +314,15 @@ void runTask() {
       }
       break;
     case MOVE_Z:
-      if (!zAxis.run()) {
+      // 11/3 밤: 아래에 부딪혀 스텝을 잃은 뒤 ZTOP이 원점을 지나 위로 더 올라갔다.
+      // HOME 뒤로는 스위치보다 Z_PARK_MM 아래까지만 가므로, 올라가는 중 스위치가 눌리면 위치가 어긋난 것
+      // → 그 자리에서 멈추고 ERR LIMIT (다시 HOME)
+      if (zAxis.distanceToGo() < 0 && digitalRead(PIN_LIM_Z) == LOW) {
+        zAxis.setCurrentPosition(0);
+        homed = false;
+        task = IDLE;
+        Serial.println("ERR LIMIT");
+      } else if (!zAxis.run()) {
         task = IDLE;
         Serial.println(doneReply);
       }
@@ -286,8 +338,22 @@ void runTask() {
     case PUSHING:
       runPush();
       break;
-    case RETREAT:
+    case HOME_X_BACK:
       if (!xAxis.run()) {
+        homed = true;
+        task = IDLE;
+        Serial.println("OK HOME");
+      }
+      break;
+    case RETREAT:
+      // X_PARK_MM까지만 물러나므로 스위치가 눌리면 위치가 어긋난 것 → 거기서 멈춤.
+      // 힘 결과는 그대로 보내고 homed를 풀어 다음 ZTOP · LIFT · PUSH가 ERR NOTHOMED가 되게 한다
+      if (digitalRead(PIN_LIM_X) == LOW) {
+        xAxis.setCurrentPosition(0);
+        homed = false;
+        task = IDLE;
+        Serial.println(resultReply);
+      } else if (!xAxis.run()) {
         task = IDLE;
         Serial.println(resultReply);
       }
@@ -334,6 +400,8 @@ void setup() {
   pinMode(PIN_ESTOP, INPUT_PULLUP);
   pinMode(PIN_START, INPUT_PULLUP);
 
+  zAxis.setPinsInverted(Z_DIR_INVERT, false, false);  // 방향 (config.h)
+  xAxis.setPinsInverted(X_DIR_INVERT, false, false);
   zAxis.setMaxSpeed(Z_SPEED_MM_S * STEPS_PER_MM);
   zAxis.setAcceleration(Z_ACCEL_MM_S2 * STEPS_PER_MM);
   xAxis.setMaxSpeed(X_SPEED_MM_S * STEPS_PER_MM);
@@ -348,6 +416,8 @@ void setup() {
 }
 
 void loop() {
+  // X 마지노선 (config.h X_HARD_MAX_MM) — 어떤 일이 있어도 넘지 않게 마지막 울타리
+  if (!stopped && xAxis.currentPosition() > mmToSteps(X_HARD_MAX_MM)) emergencyStop("ERR XMAX");
   checkSafety();
   readSerial();
   if (!stopped) runTask();

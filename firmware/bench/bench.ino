@@ -28,6 +28,9 @@ const int PIN_LIM_Z = 15;  // 눌리면 LOW (INPUT_PULLUP)
 const int PIN_LIM_X = 16;
 const int PIN_START = 21;
 
+// 방향: ampt/config.h Z_DIR_INVERT · X_DIR_INVERT와 같게 (11/3 기구에서 X가 반대 → true)
+const bool Z_DIR_INVERT = false;
+const bool X_DIR_INVERT = true;
 const float STEPS_PER_REV = 200.0 * 16;
 const float SPEED_REV_S = 2.0;   // 120 rpm
 const float ACCEL_REV_S2 = 2.0;
@@ -71,8 +74,16 @@ long averageCounts(int n) {
   return loadcell.read_average(n);
 }
 
+// 11/3 기구에 단 뒤: bench는 원점을 모르니 한 번에 크게 못 가게 한다 (X는 원점에서 16.25 mm가 마지노선, Z는 25 mm)
+const float MAX_JOG_REV = 2.0;  // 3 mm
+const bool SPIN_DISABLED = true;  // 계속 돌리기는 끝에 부딪힌다 — 모터를 기구에서 뗐을 때만 false
+
 void moveRevs(AccelStepper& axis, const char* name, float revs) {
   spinning = nullptr;
+  if (fabs(revs) > MAX_JOG_REV) {
+    Serial.printf("ERR too far: max %.1f rev (%.1f mm) per command on the mechanism\n", MAX_JOG_REV, MAX_JOG_REV * 1.5);
+    return;
+  }
   axis.move(lround(revs * STEPS_PER_REV));
   Serial.printf("%s %+.2f rev\n", name, revs);
 }
@@ -97,6 +108,8 @@ void handleCommand(String line) {
     Serial.println(cmd == "on" ? "driver ON (EN=LOW)" : "driver OFF (EN=HIGH)");
   } else if (cmd == "z" || cmd == "x") {
     moveRevs(cmd == "z" ? zAxis : xAxis, cmd == "z" ? "Z" : "X", arg.length() ? arg.toFloat() : 1.0);
+  } else if (cmd == "spin" && SPIN_DISABLED) {
+    Serial.println("ERR spin disabled: motors are on the mechanism (would hit the end)");
   } else if (cmd == "spin") {
     spinning = arg == "x" ? &xAxis : &zAxis;
     spinning->setSpeed(SPEED_REV_S * STEPS_PER_REV);
@@ -171,6 +184,8 @@ void setup() {
   pinMode(PIN_LIM_X, INPUT_PULLUP);
   pinMode(PIN_START, INPUT_PULLUP);
 
+  zAxis.setPinsInverted(Z_DIR_INVERT, false, false);
+  xAxis.setPinsInverted(X_DIR_INVERT, false, false);
   zAxis.setMaxSpeed(SPEED_REV_S * STEPS_PER_REV);
   zAxis.setAcceleration(ACCEL_REV_S2 * STEPS_PER_REV);
   xAxis.setMaxSpeed(SPEED_REV_S * STEPS_PER_REV);
