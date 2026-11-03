@@ -32,20 +32,24 @@ class SerialLink:
 
 class FakePico:
     """부품 없이 순서 프로그램을 돌려 보는 가짜. PUSH엔 힘이 오르다 break_n에서 깨지는 곡선을 보낸다.
-    진짜처럼 CLAMP는 시간이 지나야 답하고, 그 사이 VAC는 바로 답한다."""
+    진짜처럼 CLAMP · ROT는 시간이 지나야 답하고, 그 사이 다른 명령은 바로 답한다
+    (진짜 Pico도 ROT는 LIFT · CLAMP · PUSH와 따로 돈다)."""
 
-    def __init__(self, break_n: float = 36.0, clamp_s: float = 0.05):
+    def __init__(self, break_n: float = 36.0, clamp_s: float = 0.05, rot_s: float = 0.0):
         self.break_n = break_n
         self.clamp_s = clamp_s
+        self.rot_s = rot_s
         self.out: deque[str] = deque(["READY"])
-        self.later: deque[tuple[float, str]] = deque()
+        self.later: list[tuple[float, str]] = []
 
     def send(self, line: str):
         cmd, *arg = line.split()
         if cmd == "PUSH":
             self._push()
         elif cmd == "CLAMP":
-            self.later.append((time.monotonic() + self.clamp_s, "OK CLAMP"))
+            self._later(self.clamp_s, "OK CLAMP")
+        elif cmd == "ROT" and self.rot_s > 0:
+            self._later(self.rot_s, "OK ROT")
         elif cmd in ("HOME", "ZTOP", "LIFT", "ROT", "VAC", "RESET"):
             self.out.append(f"OK {cmd}")
         elif cmd == "STATUS":
@@ -65,16 +69,24 @@ class FakePico:
             self.out.append(f"FORCE {t:.1f},{f:.2f},{x:.3f}")
         self.out.append(f"BROKE {self.break_n:.1f}")
 
+    def _later(self, delay_s: float, line: str):
+        self.later.append((time.monotonic() + delay_s, line))
+        self.later.sort()
+
     def readline(self) -> str | None:
-        if self.later and self.later[0][0] <= time.monotonic():
-            self.out.append(self.later.popleft()[1])
+        while self.later and self.later[0][0] <= time.monotonic():
+            self.out.append(self.later.pop(0)[1])
         return self.out.popleft() if self.out else None
 
 
-def wait_for(link, *prefixes: str, timeout: float = 30.0, on_force=None) -> str:
-    """prefixes 중 하나로 시작하는 줄이 올 때까지 읽는다. FORCE 줄은 on_force로 넘긴다."""
+def wait_for(link, *prefixes: str, timeout: float = 30.0, on_force=None, on_line=None, on_tick=None) -> str:
+    """prefixes 중 하나로 시작하는 줄이 올 때까지 읽는다. FORCE 줄은 on_force로 넘긴다.
+    기다리지 않는 줄은 버리는데, on_line이 있으면 그리로 넘긴다 (예: PUSH를 기다리는 사이 온 OK ROT).
+    on_tick은 줄을 읽기 전마다 부른다 (기다리는 동안 다른 명령을 보낼 때)."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if on_tick:
+            on_tick()
         line = link.readline()
         if line is None:
             continue
@@ -86,6 +98,8 @@ def wait_for(link, *prefixes: str, timeout: float = 30.0, on_force=None) -> str:
             raise PicoError(line)
         if line.startswith(prefixes):
             return line
+        if on_line:
+            on_line(line)
     raise PicoError(f"시간 초과: {prefixes}")
 
 

@@ -28,3 +28,22 @@ def test_wait_all_times_out_when_one_is_missing():
     link.send("VAC 0")
     with pytest.raises(PicoError):
         wait_all(link, "OK CLAMP", "OK VAC", timeout=0.1)
+
+
+def test_wait_for_hands_other_lines_to_on_line():
+    """PUSH를 기다리는 사이 온 OK ROT를 버리지 않는다 (2차 발표 동시 진행)."""
+    link = FakePico(rot_s=0.0)
+    wait_for(link, "READY")
+    link.send("ROT 30")
+    link.send("VAC 1")
+    seen = []
+    assert wait_for(link, "OK VAC", timeout=1, on_line=seen.append) == "OK VAC"
+    assert seen == ["OK ROT"]
+
+
+def test_fake_rot_answers_later():
+    link = FakePico(rot_s=0.05)
+    link.send("ROT 30")
+    link.send("LIFT 42")
+    assert wait_for(link, "OK", timeout=1) == "OK LIFT"
+    assert wait_for(link, "OK", timeout=1) == "OK ROT"

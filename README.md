@@ -59,6 +59,7 @@ tools/pico.sh term           # 시리얼 창 — HOME, STATUS 등을 직접 쳐 
 # 전체 순서 (부품 없이 가짜 Pico로)
 .venv/bin/python main/cycle.py --fake --back <역광.jpg> --front <정면광.jpg> --bg <빈칸.jpg>
 .venv/bin/python main/cycle.py --port auto --back <역광.jpg> --front <정면광.jpg> --bg <빈칸.jpg>   # Pico 연결
+.venv/bin/python main/cycle.py --port auto --dual --size 5ml --back <역광.jpg> --bg <빈칸.jpg>   # 2차 발표 시연: 촬영 자리 · 파단 자리 동시 (파단 자리 앰플은 따로, 점은 손으로)
 ```
 
 - 숫자(스텝/mm, 정지값 43 N, 핀 등)는 `firmware/ampt/config.h`, 비전 조정값은 `vision/config.py`에 모았다. `TODO`는 실측 · 확인 전 값. `firmware/bench/bench.ino`는 같은 핀을 따로 적고, 앰플 치수는 `vision/specs.py`, 카메라 각도는 `main/cycle.py`에 있다.
