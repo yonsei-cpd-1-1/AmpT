@@ -28,9 +28,9 @@ const int PIN_START = 21;
 const float MICROSTEPS = 16;
 const float STEPS_PER_MM = 200.0 * MICROSTEPS / 1.5;  // 2133.3
 
-// 아래 기구 값 4개는 실측 전 임시값. CAD v2.5.22(11/3) 참고값을 옆에 적어 둠 — 출력 · 조립한 실물은 다를 수 있어 실측으로 정한다
-const float Z_TRAVEL_MM = 60.0;      // TODO 실측. CAD: 원점 아래 약 44.5에서 Z 너트가 커플러에 닿음 → 40 이하 (1 mL에 필요한 건 약 37.5)
-const float Z_TOP_NOTCH_MM = 62.0;   // TODO 실측. Z가 맨 위일 때 푸셔가 미는 노치 높이. CAD: 62~63 (푸셔 높이 = 노치 + 15)
+// 기구 값: 11/3 팀원 실측(자로, X · Z 원점 상태)으로 3개를 정함 — docs/testlog.md 11/3. Z_TOP_NOTCH는 클램프 조 높이를 잰 뒤
+const float Z_TRAVEL_MM = 40.0;      // 실측 11/3: 원점에서 44 mm 내려가면 푸셔쪽 하우징이 덱에 닿음 → 40 (CAD는 44.5에서 Z 너트 ↔ 커플러). 필요한 건 약 30
+const float Z_TOP_NOTCH_MM = 62.0;   // TODO 클램프 조 높이를 재고 정함 = 원점에서 조 가운데 높이(앰플 바닥 기준) + 8. 푸셔 기준(노치 + 15)이면 70.5 − 15 = 55.5. 62면 푸셔가 노치에 너무 가까움
 const float Z_SPEED_MM_S = 10.0;
 const float Z_ACCEL_MM_S2 = 40.0;
 const float Z_HOME_SPEED_MM_S = 5.0;
@@ -38,7 +38,7 @@ const float Z_HOME_SPEED_MM_S = 5.0;
 const float X_SPEED_MM_S = 10.0;     // 빈 이동
 const float X_ACCEL_MM_S2 = 40.0;
 const float X_HOME_SPEED_MM_S = 3.0;
-const float X_APPROACH_MM = 0.0;     // TODO 실측. 원점에서 머리 닿기 직전까지 빠르게 갈 거리. CAD: 닿는 거리 d − 1.5 ≈ 8.5 (d = 10.1 5 mL · 10.4 1 mL)
+const float X_APPROACH_MM = 7.4;     // 실측 11/3: 원점에서 앰플 닿는 거리 d = 8.9 (5 mL) · 9.2 (1 · 2 mL) → 짧은 쪽 d − 1.5 (CAD는 d 10.1 · 10.4)
 // 11/1 5 → 2 mm/s: 파편 시험 조건(B · C = 2 mm/s)과 맞추고, 로드셀이 10 Hz인 동안
 // 최대 힘 → 판정 사이에 더 미는 거리를 줄인다 (0.29초 × 5 mm/s = 1.4 mm → × 2 mm/s = 0.6 mm)
 const float PUSH_SPEED_MM_S = 2.0;
@@ -46,7 +46,7 @@ const float PUSH_SPEED_MM_S = 2.0;
 // 책상 시험: 로드셀을 손으로 눌렀다 뗄 시간 (30 mm ÷ 2 mm/s = 15초) — 기구에 달면 이 플래그 없이 올린다
 const float PUSH_LIMIT_MM = 30.0;
 #else
-const float PUSH_LIMIT_MM = 6.0;     // TODO 실측. 위치 제한 (두 겹 보호의 둘째). CAD: d + 2.8 ≈ 12.9, 최대 13.2 — 6이면 유리에 닿지 않는다
+const float PUSH_LIMIT_MM = 11.7;    // 위치 제한 (두 겹 보호의 둘째). 실측 11/3: d + 2.8 = 11.7 (5 mL) · 12.0 (1 · 2 mL) → 짧은 쪽. 원점에서 12.0을 넘으면 X 너트 플랜지 ↔ 푸셔쪽 조 (여유 0.77)
 #endif
 
 // ---------- 파단 판정 ----------
