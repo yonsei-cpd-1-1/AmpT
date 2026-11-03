@@ -237,3 +237,6 @@ logs/fake/
 
 # 윈도우에서 arduino-cli 설치 위치 (tools/pico.py)
 .arduino/
+
+# tools/pico board로 저장한 보드 종류 (컴퓨터마다 다를 수 있음)
+.ampt_board
