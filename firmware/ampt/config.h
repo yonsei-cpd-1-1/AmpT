@@ -35,14 +35,25 @@ const float STEPS_PER_MM = 200.0 * MICROSTEPS / 1.5;  // 2133.3
 // 기구 값: 11/3 팀원 실측(자로, X · Z 원점 상태)으로 3개를 정함 — docs/testlog.md 11/3. Z_TOP_NOTCH는 클램프 조 높이를 잰 뒤
 // 11/3 밤 기구 시험: LIFT 22 (원점에서 40 mm)에서 아래에 부딪힘 → 5 mm씩 내려 본 뒤 박도울 "LIFT 37까지만" = 25 mm.
 // 이 값이면 1 mL 노치 높이(원점에서 약 26~32 mm 필요)에는 못 내려간다 (설계/03 Q-78)
-const float Z_TRAVEL_MM = 25.0;      // 처음 값 40 — 팀원 실측 11/3: 원점에서 44 mm 내려가면 푸셔쪽 하우징이 덱에 닿음 → 40 (CAD는 44.5에서 Z 너트 ↔ 커플러). 필요한 건 약 30
+// 11/4 박도울 "37보다 더, 1 mm씩" → 시험용 35 (LIFT 27까지)로 1 mm씩 내려 봄 → LIFT 30(32 mm)에서 부딪힘
+// ★ Z 마지노선 (11/4 박도울 "LIFT 31이 진짜 마지노선, 30 가면 부딪힌다"): 원점 스위치에서 31 mm 아래.
+//   X_HARD_MAX_MM과 같은 방식 — LIFT 범위가 이 값을 넘으면 컴파일이 안 되고, 매 루프 위치를 봐서
+//   넘으면 바로 비상정지(ERR ZMAX)한다
+constexpr float Z_HARD_MAX_MM = 31.0;
+constexpr float Z_TRAVEL_MM = 31.0;  // LIFT 31까지. 처음 값 40 (팀원 실측 11/3 44 mm에서 덱) → 11/3 밤 25 → 11/4 31
 // 11/3 밤 박도울: 원점 스위치 높이까지는 HOME 때만 올라가고, 그 뒤로는 이만큼 아래가 맨 위.
 // HOME = 스위치에 닿아 0을 잡고 → 이 높이로 내려와서 → X 원점. ZTOP도 여기까지. 좌표(0 = 스위치)는 그대로
-const float Z_PARK_MM = 5.0;
+constexpr float Z_PARK_MM = 5.0;
+static_assert(Z_PARK_MM < Z_TRAVEL_MM, "Z_PARK_MM must be above Z_TRAVEL_MM");
+static_assert(Z_TRAVEL_MM <= Z_HARD_MAX_MM, "Z_TRAVEL_MM beyond Z_HARD_MAX_MM (hits below)");
 const float Z_TOP_NOTCH_MM = 62.0;   // TODO 클램프 조 높이를 재고 정함 = 원점에서 조 가운데 높이(앰플 바닥 기준) + 8. 푸셔 기준(노치 + 15)이면 70.5 − 15 = 55.5. 62면 푸셔가 노치에 너무 가까움
 const float Z_SPEED_MM_S = 10.0;
 const float Z_ACCEL_MM_S2 = 40.0;
 const float Z_HOME_SPEED_MM_S = 5.0;
+// ZJOG · ZGO · XJOG · XGO (11/4 시험용 이동): 속도를 주면 이 범위 안에서, 안 주면 아래 기본값
+const float JOG_SPEED_MIN_MM_S = 0.1;
+const float JOG_SPEED_MAX_MM_S = 10.0;
+const float JOG_SPEED_DEFAULT_MM_S = 2.0;
 
 const float X_SPEED_MM_S = 10.0;     // 빈 이동
 const float X_ACCEL_MM_S2 = 40.0;
@@ -96,8 +107,9 @@ const float ROT_ACCEL_STEPS_S2 = 1600.0;
 // 이게 닫히는 방향인지는 기구에 달고 확인 — 반대면 MOTOR-A의 두 선을 서로 바꾼다 (코드는 그대로)
 // 11/3 200 → 128: 6 V × 128/255 ≈ 3 V로 약하게 시작. N20을 끝까지 조이면 190~310 N(계산, CAD v2.5.9)이라 앰플 · 출력 조가 상할 수 있다.
 // 앰플이 미끄러지면 올린다 (CAD v2.5.22 README · 팀 전장 가이드 11/2와 같은 권장)
-// 닫히는 방향이 반대면 true (선 대신 코드로 바꿈 — X와 같은 방식). 11/4 기구에서 CJOG로 확인
-const bool CLAMP_DIR_INVERT = false;
+// 닫히는 방향이 반대면 true (선 대신 코드로 바꿈 — X와 같은 방식).
+// 11/4 기구: false일 때 CJOG − 에 조여지고 + 에 벌어짐 (박도울) → true
+const bool CLAMP_DIR_INVERT = true;
 // CJOG <ms> [pwm]: 시험용 조금씩 움직이기 (+ 닫기 · − 열기). 한 번에 이 시간까지만
 const unsigned long CLAMP_JOG_MAX_MS = 1000;
 const int CLAMP_PWM = 128;             // 0~255, TODO N20 정지 토크 실측 후
