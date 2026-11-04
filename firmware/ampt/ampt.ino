@@ -23,7 +23,7 @@ bool homed = false;
 bool stopped = false;
 bool rotBusy = false;
 bool clampJogBusy = false;  // CJOG 도는 중 (task와 따로, 11/4)
-const char* macroName = nullptr;  // GRIP1 · BREAK1 · RETREAT1 · ALIGN1 진행 중이면 그 이름
+const char* macroName = nullptr;  // GRIP1 · BREAK1 · RETREAT1 · ALIGN1 · SERIES* 진행 중이면 그 이름
 const char* doneReply = "";  // 지금 일이 끝나면 보낼 줄
 char resultReply[32];        // PUSH 결과 (후퇴가 끝난 뒤 보냄)
 
@@ -196,50 +196,70 @@ void startClampJog(String arg) {
   clampJogBusy = true;
 }
 
-// ---------- 1 mL 잡기 · 파단 · 후퇴 (11/4): GRIP1 · BREAK1 · RETREAT1 · ALIGN1 ----------
+// ---------- 1 mL 잡기 · 파단 · 후퇴 (11/4): GRIP1 · BREAK1 · RETREAT1 · ALIGN1 · SERIES1 · SERIES3 ----------
 // 시험으로 찾은 순서(config.h GRIP1_* · BREAK1_*)를 한 명령으로. 단계는 위의 XGO · ZGO · CJOG를 그대로 보내고
-// 앞 단계가 끝나야 다음으로 간다. '+'로 시작하는 단계는 다음 단계와 동시에 시작한다 (CJOG는 X · Z와 따로 돈다)
-char macroSteps[4][32];
+// 앞 단계가 끝나야 다음으로 간다. '+'로 시작하는 단계는 다음 단계와 동시에 시작한다 (CJOG는 X · Z와 따로 돈다).
+// 'WAIT <ms>' 단계는 그만큼 기다린다 (매크로 안에서만)
+const int MACRO_MAX_STEPS = 16;
+char macroSteps[MACRO_MAX_STEPS][32];
 int macroCount = 0;
 int macroIdx = 0;
+unsigned long macroWaitUntilMs = 0;
 
-void startGrip1() {
-  snprintf(macroSteps[0], 32, "XGO %.2f 5", X_PARK_MM);  // 푸셔를 먼저 빼고 Z를 움직인다
-  snprintf(macroSteps[1], 32, "ZGO %.2f", GRIP1_Z_MM);
-  snprintf(macroSteps[2], 32, "CJOG %lu %d", GRIP1_CLAMP_MS, GRIP1_CLAMP_PWM);
-  snprintf(macroSteps[3], 32, "XGO %.2f 5", GRIP1_X_MM);
-  macroCount = 4;
+void beginMacro(const char* name) {
+  macroCount = 0;
   macroIdx = 0;
-  macroName = "GRIP1";
+  macroWaitUntilMs = millis();
+  macroName = name;
 }
 
-void startBreak1() {
-  snprintf(macroSteps[0], 32, "+CJOG %lu %d", BREAK1_CLAMP_MS, GRIP1_CLAMP_PWM);
-  snprintf(macroSteps[1], 32, "XGO %.2f %.1f", BREAK1_X_MM, BREAK1_X_SPEED_MM_S);
-  macroCount = 2;
-  macroIdx = 0;
-  macroName = "BREAK1";
+void addStep(const char* fmt, ...) {
+  if (macroCount >= MACRO_MAX_STEPS) return;
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(macroSteps[macroCount++], 32, fmt, ap);
+  va_end(ap);
 }
 
-void startRetreat1() {
-  // CJOG는 한 번에 CLAMP_JOG_MAX_MS까지 → 그만큼은 X와 동시에 열고, 남은 만큼은 X가 멈춘 뒤 이어서 연다
-  unsigned long first = RETREAT1_CLAMP_MS < CLAMP_JOG_MAX_MS ? RETREAT1_CLAMP_MS : CLAMP_JOG_MAX_MS;
-  snprintf(macroSteps[0], 32, "+CJOG -%lu %d", first, GRIP1_CLAMP_PWM);
-  snprintf(macroSteps[1], 32, "XGO %.2f 5", RETREAT1_X_MM);
-  macroCount = 2;
-  if (RETREAT1_CLAMP_MS > first) {
-    snprintf(macroSteps[2], 32, "CJOG -%lu %d", RETREAT1_CLAMP_MS - first, GRIP1_CLAMP_PWM);
-    macroCount = 3;
+// 클램프를 ms만큼 연다. CJOG는 한 번에 CLAMP_JOG_MAX_MS까지라 나눠서 차례로
+void addClampOpenSteps(unsigned long ms) {
+  while (ms > 0) {
+    unsigned long part = ms < CLAMP_JOG_MAX_MS ? ms : CLAMP_JOG_MAX_MS;
+    addStep("CJOG -%lu %d", part, GRIP1_CLAMP_PWM);
+    ms -= part;
   }
-  macroIdx = 0;
-  macroName = "RETREAT1";
 }
 
-void startAlign1() {
-  snprintf(macroSteps[0], 32, "ZGO %.2f", ALIGN1_Z_MM);
-  macroCount = 1;
-  macroIdx = 0;
-  macroName = "ALIGN1";
+void addGrip1Steps() {
+  addStep("XGO %.2f 5", X_PARK_MM);  // 푸셔를 먼저 빼고 Z를 움직인다
+  addStep("ZGO %.2f", GRIP1_Z_MM);
+  addStep("CJOG %lu %d", GRIP1_CLAMP_MS, GRIP1_CLAMP_PWM);
+  addStep("XGO %.2f 5", GRIP1_X_MM);
+}
+
+void addBreak1Steps() {
+  addStep("+CJOG %lu %d", BREAK1_CLAMP_MS, GRIP1_CLAMP_PWM);
+  addStep("XGO %.2f %.1f", BREAK1_X_MM, BREAK1_X_SPEED_MM_S);
+}
+
+void addRetreat1Steps() {
+  // 첫 조각(최대 CLAMP_JOG_MAX_MS)은 X와 동시에 열고, 남은 만큼은 X가 멈춘 뒤 이어서 연다
+  unsigned long first = RETREAT1_CLAMP_MS < CLAMP_JOG_MAX_MS ? RETREAT1_CLAMP_MS : CLAMP_JOG_MAX_MS;
+  addStep("+CJOG -%lu %d", first, GRIP1_CLAMP_PWM);
+  addStep("XGO %.2f 5", RETREAT1_X_MM);
+  addClampOpenSteps(RETREAT1_CLAMP_MS - first);
+}
+
+void addAlign1Steps() {
+  addStep("ZGO %.2f", ALIGN1_Z_MM);
+}
+
+// SERIES3 후퇴 (11/4 21:13): X를 먼저 끝까지 뺀 뒤 기다렸다가 클램프만 연다.
+// 동시에 열면(RETREAT1) 푸셔가 아직 누르고 있어 앰플을 못 놓음 — X 먼저 빼니 놓였다
+void addRetreat3Steps() {
+  addStep("XGO %.2f 5", RETREAT1_X_MM);
+  addStep("WAIT %lu", SERIES3_WAIT_MS);
+  addClampOpenSteps(SERIES3_CLAMP_OPEN_MS);
 }
 
 void handleCommand(String line) {
@@ -335,10 +355,27 @@ void handleCommand(String line) {
   if (cmd == "GRIP1" || cmd == "BREAK1" || cmd == "RETREAT1" || cmd == "ALIGN1") {
     if (task != IDLE || clampJogBusy || macroName) Serial.println("ERR BUSY");
     else if (!homed) Serial.println("ERR NOTHOMED");
-    else if (cmd == "GRIP1") startGrip1();
-    else if (cmd == "BREAK1") startBreak1();
-    else if (cmd == "RETREAT1") startRetreat1();
-    else startAlign1();
+    else if (cmd == "GRIP1") { beginMacro("GRIP1"); addGrip1Steps(); }
+    else if (cmd == "BREAK1") { beginMacro("BREAK1"); addBreak1Steps(); }
+    else if (cmd == "RETREAT1") { beginMacro("RETREAT1"); addRetreat1Steps(); }
+    else { beginMacro("ALIGN1"); addAlign1Steps(); }
+    return;
+  }
+  // 처음부터 끝까지 한 명령으로 (HOME부터 하므로 HOME 전에도 됨)
+  //   SERIES1 = HOME → GRIP1 → BREAK1 → RETREAT1 → ALIGN1
+  //   SERIES3 = HOME → GRIP1 → BREAK1 → X 먼저 뒤로 → 기다림 → 클램프 열기 → ALIGN1
+  if (cmd == "SERIES1" || cmd == "SERIES3") {
+    if (task != IDLE || clampJogBusy || macroName) {
+      Serial.println("ERR BUSY");
+      return;
+    }
+    beginMacro(cmd == "SERIES1" ? "SERIES1" : "SERIES3");
+    addStep("HOME");
+    addGrip1Steps();
+    addBreak1Steps();
+    if (cmd == "SERIES1") addRetreat1Steps();
+    else addRetreat3Steps();
+    addAlign1Steps();
     return;
   }
 
@@ -381,13 +418,20 @@ void handleCommand(String line) {
   }
 }
 
-// GRIP1 · BREAK1 · RETREAT1 · ALIGN1 단계 진행: 앞 단계가 끝났으면(IDLE) 다음 단계를 보낸다.
+// GRIP1 · BREAK1 · RETREAT1 · ALIGN1 · SERIES* 단계 진행: 앞 단계가 끝났으면(IDLE) 다음 단계를 보낸다.
 // 보낸 단계가 시작되지 않으면(범위 밖 · NOTHOMED 등, 그 ERR 줄은 이미 나감) 거기서 멈추고 ERR <이름>
 void runMacro() {
   if (!macroName || task != IDLE || clampJogBusy) return;
+  if ((long)(millis() - macroWaitUntilMs) < 0) return;
   if (macroIdx >= macroCount) {
     Serial.printf("OK %s\n", macroName);
     macroName = nullptr;
+    return;
+  }
+  if (strncmp(macroSteps[macroIdx], "WAIT ", 5) == 0) {
+    unsigned long ms = strtoul(macroSteps[macroIdx++] + 5, nullptr, 10);
+    macroWaitUntilMs = millis() + ms;
+    Serial.printf("OK WAIT %lu ms\n", ms);
     return;
   }
   bool together;

@@ -94,20 +94,23 @@ const unsigned long GRIP1_CLAMP_MS = 3000;
 const int GRIP1_CLAMP_PWM = 255;
 constexpr float GRIP1_X_MM = 9.5;
 const unsigned long BREAK1_CLAMP_MS = 3500;  // X와 동시에 더 조임 (pwm은 GRIP1_CLAMP_PWM)
-constexpr float BREAK1_X_MM = 21.5;              // 9.5에서 12 mm = 8바퀴
+constexpr float BREAK1_X_MM = 21.95;             // 9.5에서 12.45 mm = 8.3바퀴 (11/4 20:52, 그 전 21.5 = 8바퀴)
 const float BREAK1_X_SPEED_MM_S = 5.0;
 static_assert(GRIP1_Z_MM >= Z_PARK_MM && GRIP1_Z_MM <= Z_HARD_MAX_MM, "GRIP1_Z_MM out of Z range");
 static_assert(GRIP1_X_MM >= X_PARK_MM && BREAK1_X_MM <= X_HARD_MAX_MM, "GRIP1 · BREAK1 X out of X range");
 // 1 mL 후퇴 (RETREAT1): 클램프를 열면서 동시에 X를 GRIP1_X보다 3바퀴(4.5 mm) 뒤로.
-// 여는 시간 = 잡기 + 파단에 조인 시간 + 여유. 11/4 16:27 6500 → 7500: 덜 벌어져서 1초 더.
-//   여유만큼 매번 출발점보다 더 열리므로(열림 끝에서 멈춤) 다음 GRIP1은 그만큼 덜 조여진다
+// 여는 시간: 11/4 16:27 6500 → 7500 → 8000 (잡기 + 파단 + 여유) → 20:50 5000으로 바로 정함.
+//   앰플을 문 채 조인 시간은 일부 헛돌아서(조가 멈춤), 조인 만큼 다 열면 출발점보다 훨씬 더 열린다
 constexpr float RETREAT1_X_MM = GRIP1_X_MM - 4.5;
-const unsigned long RETREAT1_CLAMP_EXTRA_MS = 1000;
-const unsigned long RETREAT1_CLAMP_MS = GRIP1_CLAMP_MS + BREAK1_CLAMP_MS + RETREAT1_CLAMP_EXTRA_MS;
+const unsigned long RETREAT1_CLAMP_MS = 5000;
 static_assert(RETREAT1_X_MM >= X_PARK_MM, "RETREAT1_X_MM behind X_PARK_MM");
 // 다음 앰플 높이로 (ALIGN1): RETREAT1 뒤 Z만 2 mL 잡기 높이로 옮긴다 (X · 클램프는 그대로). 11/4 16:18 실측
 constexpr float ALIGN1_Z_MM = 12.5;
 static_assert(ALIGN1_Z_MM >= Z_PARK_MM && ALIGN1_Z_MM <= Z_HARD_MAX_MM, "ALIGN1_Z_MM out of Z range");
+// SERIES3 후퇴 (11/4 21:13 깨진 · 새 앰플로 시험): BREAK1 뒤 X를 먼저 RETREAT1_X_MM까지 빼고, 기다렸다가 클램프만 연다.
+// 여는 시간 6500 → 6000 → 4800 (놓이는 데는 충분했고, 너무 열면 다음 잡기까지 오래 걸림)
+const unsigned long SERIES3_WAIT_MS = 1500;
+const unsigned long SERIES3_CLAMP_OPEN_MS = 4800;
 
 // ---------- 파단 판정 ----------
 const float STOP_FORCE_N = 43.0;     // 정지값 = 1.2 × 기계 파단력 36 N
