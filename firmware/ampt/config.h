@@ -27,7 +27,9 @@ const int PIN_START = 21;
 // ---------- 리드스크류 축 (Z · X 공통, NEMA17 + TMR8 리드 1.5) ----------
 // 방향: 11/3 기구 bench 시험에서 X가 반대로 돎 (x 1 = 뒤, x -1 = 앞) → 코드로 뒤집음 (선은 그대로).
 // 맞는 방향: Z + = 아래 · X + = 앰플 쪽. bench.ino에도 같은 값이 있다 (바꾸면 둘 다)
-const bool Z_DIR_INVERT = false;
+// 11/4 오후: 다른 컴퓨터에 연결했다 온 뒤 Z가 반대로 돎 (bench z -0.5 = 아래, 아침까지는 맞았음) → 코드로 뒤집음.
+//   Z 모터 커넥터가 뒤집혀 꽂혔을 수 있다 — 선을 원래대로 다시 꽂으면 false로 되돌린다
+const bool Z_DIR_INVERT = true;
 const bool X_DIR_INVERT = true;
 const float MICROSTEPS = 16;
 const float STEPS_PER_MM = 200.0 * MICROSTEPS / 1.5;  // 2133.3
@@ -39,8 +41,9 @@ const float STEPS_PER_MM = 200.0 * MICROSTEPS / 1.5;  // 2133.3
 // ★ Z 마지노선 (11/4 박도울 "LIFT 31이 진짜 마지노선, 30 가면 부딪힌다"): 원점 스위치에서 31 mm 아래.
 //   X_HARD_MAX_MM과 같은 방식 — LIFT 범위가 이 값을 넘으면 컴파일이 안 되고, 매 루프 위치를 봐서
 //   넘으면 바로 비상정지(ERR ZMAX)한다
-constexpr float Z_HARD_MAX_MM = 31.0;
-constexpr float Z_TRAVEL_MM = 31.0;  // LIFT 31까지. 처음 값 40 (팀원 실측 11/3 44 mm에서 덱) → 11/3 밤 25 → 11/4 31
+// 11/4 새벽: ZGO 31에서도 아래에 부딪힘 → 0.5바퀴(0.75 mm) 올려 30.25
+constexpr float Z_HARD_MAX_MM = 30.25;
+constexpr float Z_TRAVEL_MM = 30.25;  // LIFT 31.75까지. 처음 값 40 (팀원 실측 11/3 44 mm에서 덱) → 11/3 밤 25 → 11/4 31 → 30.25
 // 11/3 밤 박도울: 원점 스위치 높이까지는 HOME 때만 올라가고, 그 뒤로는 이만큼 아래가 맨 위.
 // HOME = 스위치에 닿아 0을 잡고 → 이 높이로 내려와서 → X 원점. ZTOP도 여기까지. 좌표(0 = 스위치)는 그대로
 constexpr float Z_PARK_MM = 5.0;
@@ -66,7 +69,8 @@ constexpr float X_PARK_MM = 5.0;
 //   이보다 앞은 MGN 블록이 레일을 벗어난다 → 어떤 빌드 · 명령으로도 넘지 않는다.
 //   아래 static_assert로 PUSH_LIMIT · X_APPROACH가 이 값을 넘으면 컴파일이 안 되고, 펌웨어는 매 루프 위치를 봐서
 //   넘으면 바로 비상정지(ERR XMAX)한다
-constexpr float X_HARD_MAX_MM = 16.25;
+// ⚠ 11/4 새벽 임시: 16.25 → 30 으로 풀어 둠 (XJOG로 조금씩 밀어 새 마지노선을 다시 정한 뒤 그 값으로 바꾼다)
+constexpr float X_HARD_MAX_MM = 30.0;
 constexpr float X_APPROACH_MM = 7.4;     // 실측 11/3: 원점에서 앰플 닿는 거리 d = 8.9 (5 mL) · 9.2 (1 · 2 mL) → 짧은 쪽 d − 1.5 (CAD는 d 10.1 · 10.4)
 // 11/1 5 → 2 mm/s: 파편 시험 조건(B · C = 2 mm/s)과 맞추고, 로드셀이 10 Hz인 동안
 // 최대 힘 → 판정 사이에 더 미는 거리를 줄인다 (0.29초 × 5 mm/s = 1.4 mm → × 2 mm/s = 0.6 mm)
@@ -80,6 +84,30 @@ constexpr float PUSH_LIMIT_MM = 11.7;    // 위치 제한 (두 겹 보호의 둘
 static_assert(X_PARK_MM < X_APPROACH_MM, "X_PARK_MM must be behind X_APPROACH_MM");
 static_assert(X_APPROACH_MM < PUSH_LIMIT_MM, "X_APPROACH_MM must be behind PUSH_LIMIT_MM");
 static_assert(PUSH_LIMIT_MM <= X_HARD_MAX_MM, "PUSH_LIMIT_MM beyond X_HARD_MAX_MM (rail end)");
+
+// ---------- 1 mL 잡기 · 파단 (11/4 아침 기구 시험, 로드셀 없이) — GRIP1 · BREAK1 명령 ----------
+// 위치는 원점 스위치에서 mm. GRIP1 = X를 X_PARK로 빼고 → Z를 내리고 → 클램프를 조이고 → 푸셔를 앰플 앞까지.
+// BREAK1 = 클램프를 더 조이면서 동시에 X를 민다. 09:38에 이 값으로 1 mL가 깨짐 (X 9.5 → 21.5 사이)
+// 클램프 시간은 "열린 상태"(직전 잡기를 같은 시간만큼 연 자리)에서 센다 — 시간으로만 움직이므로 출발점이 다르면 조이는 정도도 다르다
+constexpr float GRIP1_Z_MM = 21.5;
+const unsigned long GRIP1_CLAMP_MS = 3000;
+const int GRIP1_CLAMP_PWM = 255;
+constexpr float GRIP1_X_MM = 9.5;
+const unsigned long BREAK1_CLAMP_MS = 3500;  // X와 동시에 더 조임 (pwm은 GRIP1_CLAMP_PWM)
+constexpr float BREAK1_X_MM = 21.5;              // 9.5에서 12 mm = 8바퀴
+const float BREAK1_X_SPEED_MM_S = 5.0;
+static_assert(GRIP1_Z_MM >= Z_PARK_MM && GRIP1_Z_MM <= Z_HARD_MAX_MM, "GRIP1_Z_MM out of Z range");
+static_assert(GRIP1_X_MM >= X_PARK_MM && BREAK1_X_MM <= X_HARD_MAX_MM, "GRIP1 · BREAK1 X out of X range");
+// 1 mL 후퇴 (RETREAT1): 클램프를 열면서 동시에 X를 GRIP1_X보다 3바퀴(4.5 mm) 뒤로.
+// 여는 시간 = 잡기 + 파단에 조인 시간 + 여유. 11/4 16:27 6500 → 7500: 덜 벌어져서 1초 더.
+//   여유만큼 매번 출발점보다 더 열리므로(열림 끝에서 멈춤) 다음 GRIP1은 그만큼 덜 조여진다
+constexpr float RETREAT1_X_MM = GRIP1_X_MM - 4.5;
+const unsigned long RETREAT1_CLAMP_EXTRA_MS = 1000;
+const unsigned long RETREAT1_CLAMP_MS = GRIP1_CLAMP_MS + BREAK1_CLAMP_MS + RETREAT1_CLAMP_EXTRA_MS;
+static_assert(RETREAT1_X_MM >= X_PARK_MM, "RETREAT1_X_MM behind X_PARK_MM");
+// 다음 앰플 높이로 (ALIGN1): RETREAT1 뒤 Z만 2 mL 잡기 높이로 옮긴다 (X · 클램프는 그대로). 11/4 16:18 실측
+constexpr float ALIGN1_Z_MM = 12.5;
+static_assert(ALIGN1_Z_MM >= Z_PARK_MM && ALIGN1_Z_MM <= Z_HARD_MAX_MM, "ALIGN1_Z_MM out of Z range");
 
 // ---------- 파단 판정 ----------
 const float STOP_FORCE_N = 43.0;     // 정지값 = 1.2 × 기계 파단력 36 N
@@ -111,7 +139,8 @@ const float ROT_ACCEL_STEPS_S2 = 1600.0;
 // 11/4 기구: false일 때 CJOG − 에 조여지고 + 에 벌어짐 (박도울) → true
 const bool CLAMP_DIR_INVERT = true;
 // CJOG <ms> [pwm]: 시험용 조금씩 움직이기 (+ 닫기 · − 열기). 한 번에 이 시간까지만
-const unsigned long CLAMP_JOG_MAX_MS = 1000;
+// 11/4 새벽 1000 → 4000: XJOG와 동시에 3.5초 조이기 시험. 막힌 채로 오래 넣지 않는다
+const unsigned long CLAMP_JOG_MAX_MS = 4000;
 const int CLAMP_PWM = 128;             // 0~255, TODO N20 정지 토크 실측 후
 const unsigned long CLAMP_CLOSE_MS = 1500;  // TODO
 const unsigned long CLAMP_OPEN_MS = 1500;   // TODO

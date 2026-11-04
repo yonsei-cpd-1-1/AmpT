@@ -15,13 +15,15 @@ AccelStepper rotAxis(AccelStepper::HALF4WIRE, PIN_ROT_IN1, PIN_ROT_IN3, PIN_ROT_
 HX711 loadcell;
 BreakDetector detector(STOP_FORCE_N, BREAK_MIN_PEAK_N, BREAK_DROP_RATIO, BREAK_CONFIRM_SAMPLES);
 
-// 한 번에 하나만 도는 일 (ROT는 따로 — 다른 축과 동시에 돈다)
+// 한 번에 하나만 도는 일 (ROT · CJOG는 따로 — 다른 축과 동시에 돈다)
 enum Task { IDLE, HOME_Z, HOME_Z_BACK, HOME_X, HOME_X_BACK, MOVE_Z, MOVE_X, PUSH_APPROACH, PUSHING, RETREAT, CLAMPING };
 Task task = IDLE;
 
 bool homed = false;
 bool stopped = false;
 bool rotBusy = false;
+bool clampJogBusy = false;  // CJOG 도는 중 (task와 따로, 11/4)
+const char* macroName = nullptr;  // GRIP1 · BREAK1 · RETREAT1 · ALIGN1 진행 중이면 그 이름
 const char* doneReply = "";  // 지금 일이 끝나면 보낼 줄
 char resultReply[32];        // PUSH 결과 (후퇴가 끝난 뒤 보냄)
 
@@ -60,6 +62,8 @@ void emergencyStop(const char* reason) {
   haltAxis(rotAxis);
   task = IDLE;
   rotBusy = false;
+  clampJogBusy = false;
+  macroName = nullptr;
   stopped = true;
   Serial.println(reason);
 }
@@ -81,7 +85,7 @@ void startMoveZ(float zMm, const char* reply) {
 
 // ---------- 시험용 이동 (11/4): ZJOG · ZGO · XJOG · XGO ----------
 // 위치는 모두 원점 스위치에서 mm (Z + = 아래, X + = 앰플 쪽). 갈 수 있는 곳은
-// Z = Z_PARK_MM ~ Z_HARD_MAX_MM (5 ~ 31), X = X_PARK_MM ~ X_HARD_MAX_MM (5 ~ 16.25) — 마지노선 그대로
+// Z = Z_PARK_MM ~ Z_HARD_MAX_MM (5 ~ 30.25), X = X_PARK_MM ~ X_HARD_MAX_MM (5 ~ 30, 11/4 임시) — 마지노선 그대로
 char posReply[64];
 char jogReply[64];
 
@@ -164,8 +168,11 @@ void startClamp(bool close) {
 
 // 시험용: CJOG <ms> [pwm] — + 닫기 · − 열기, 0 = 누적 시간 지우기. 누적(닫은 ms − 연 ms)을 알려 줘서
 // 다 열린 자리 → 앰플에 닿는 자리까지의 시간을 CLAMP_CLOSE_MS로 옮겨 적는다 (11/4)
+// ROT처럼 task와 따로 돈다 → CJOG 중에도 XJOG · ZJOG 등을 받고, 그 반대도 된다 (11/4 새벽)
 long clampJogTotalMs = 0;
 char clampJogReply[48];
+unsigned long clampJogStartMs = 0;
+unsigned long clampJogDurationMs = 0;
 
 void startClampJog(String arg) {
   arg.trim();
@@ -182,12 +189,57 @@ void startClampJog(String arg) {
     return;
   }
   driveClamp(ms > 0, pwm);
-  clampStartMs = millis();
-  clampDurationMs = labs(ms);
+  clampJogStartMs = millis();
+  clampJogDurationMs = labs(ms);
   clampJogTotalMs += ms;
   snprintf(clampJogReply, sizeof(clampJogReply), "OK CJOG %+ld ms pwm %d, total %+ld ms", ms, pwm, clampJogTotalMs);
-  doneReply = clampJogReply;
-  task = CLAMPING;
+  clampJogBusy = true;
+}
+
+// ---------- 1 mL 잡기 · 파단 · 후퇴 (11/4): GRIP1 · BREAK1 · RETREAT1 · ALIGN1 ----------
+// 시험으로 찾은 순서(config.h GRIP1_* · BREAK1_*)를 한 명령으로. 단계는 위의 XGO · ZGO · CJOG를 그대로 보내고
+// 앞 단계가 끝나야 다음으로 간다. '+'로 시작하는 단계는 다음 단계와 동시에 시작한다 (CJOG는 X · Z와 따로 돈다)
+char macroSteps[4][32];
+int macroCount = 0;
+int macroIdx = 0;
+
+void startGrip1() {
+  snprintf(macroSteps[0], 32, "XGO %.2f 5", X_PARK_MM);  // 푸셔를 먼저 빼고 Z를 움직인다
+  snprintf(macroSteps[1], 32, "ZGO %.2f", GRIP1_Z_MM);
+  snprintf(macroSteps[2], 32, "CJOG %lu %d", GRIP1_CLAMP_MS, GRIP1_CLAMP_PWM);
+  snprintf(macroSteps[3], 32, "XGO %.2f 5", GRIP1_X_MM);
+  macroCount = 4;
+  macroIdx = 0;
+  macroName = "GRIP1";
+}
+
+void startBreak1() {
+  snprintf(macroSteps[0], 32, "+CJOG %lu %d", BREAK1_CLAMP_MS, GRIP1_CLAMP_PWM);
+  snprintf(macroSteps[1], 32, "XGO %.2f %.1f", BREAK1_X_MM, BREAK1_X_SPEED_MM_S);
+  macroCount = 2;
+  macroIdx = 0;
+  macroName = "BREAK1";
+}
+
+void startRetreat1() {
+  // CJOG는 한 번에 CLAMP_JOG_MAX_MS까지 → 그만큼은 X와 동시에 열고, 남은 만큼은 X가 멈춘 뒤 이어서 연다
+  unsigned long first = RETREAT1_CLAMP_MS < CLAMP_JOG_MAX_MS ? RETREAT1_CLAMP_MS : CLAMP_JOG_MAX_MS;
+  snprintf(macroSteps[0], 32, "+CJOG -%lu %d", first, GRIP1_CLAMP_PWM);
+  snprintf(macroSteps[1], 32, "XGO %.2f 5", RETREAT1_X_MM);
+  macroCount = 2;
+  if (RETREAT1_CLAMP_MS > first) {
+    snprintf(macroSteps[2], 32, "CJOG -%lu %d", RETREAT1_CLAMP_MS - first, GRIP1_CLAMP_PWM);
+    macroCount = 3;
+  }
+  macroIdx = 0;
+  macroName = "RETREAT1";
+}
+
+void startAlign1() {
+  snprintf(macroSteps[0], 32, "ZGO %.2f", ALIGN1_Z_MM);
+  macroCount = 1;
+  macroIdx = 0;
+  macroName = "ALIGN1";
 }
 
 void handleCommand(String line) {
@@ -203,6 +255,8 @@ void handleCommand(String line) {
     haltAxis(zAxis);
     haltAxis(xAxis);
     clampMotor(0, 0);
+    clampJogBusy = false;
+    macroName = nullptr;
     zAxis.setMaxSpeed(Z_SPEED_MM_S * STEPS_PER_MM);
     xAxis.setMaxSpeed(X_SPEED_MM_S * STEPS_PER_MM);
     task = IDLE;
@@ -215,7 +269,7 @@ void handleCommand(String line) {
     return;
   }
   if (cmd == "STATUS") {
-    Serial.println(stopped ? "STATUS STOPPED" : (task == IDLE && !rotBusy) ? "STATUS IDLE" : "STATUS BUSY");
+    Serial.println(stopped ? "STATUS STOPPED" : (task == IDLE && !rotBusy && !clampJogBusy && !macroName) ? "STATUS IDLE" : "STATUS BUSY");
     return;
   }
   if (cmd == "RESET") {
@@ -244,6 +298,14 @@ void handleCommand(String line) {
     rotBusy = true;
     return;
   }
+  if (cmd == "CJOG") {  // ROT처럼 Z · X와 따로 돈다. 같은 N20을 쓰는 CLAMP와는 서로 막는다
+    if (clampJogBusy || task == CLAMPING) {
+      Serial.println("ERR BUSY");
+      return;
+    }
+    startClampJog(arg);
+    return;
+  }
   if (cmd == "VAC") {
     digitalWrite(PIN_VAC, arg.toInt() ? HIGH : LOW);
     Serial.println("OK VAC");
@@ -253,8 +315,17 @@ void handleCommand(String line) {
     Serial.println("ERR NOTSUPPORTED");
     return;
   }
+  if (cmd == "GRIP1" || cmd == "BREAK1" || cmd == "RETREAT1" || cmd == "ALIGN1") {
+    if (task != IDLE || clampJogBusy || macroName) Serial.println("ERR BUSY");
+    else if (!homed) Serial.println("ERR NOTHOMED");
+    else if (cmd == "GRIP1") startGrip1();
+    else if (cmd == "BREAK1") startBreak1();
+    else if (cmd == "RETREAT1") startRetreat1();
+    else startAlign1();
+    return;
+  }
 
-  bool known = cmd == "HOME" || cmd == "ZTOP" || cmd == "LIFT" || cmd == "CLAMP" || cmd == "CJOG" || cmd == "PUSH" ||
+  bool known = cmd == "HOME" || cmd == "ZTOP" || cmd == "LIFT" || cmd == "CLAMP" || cmd == "PUSH" ||
                cmd == "ZJOG" || cmd == "ZGO" || cmd == "XJOG" || cmd == "XGO";
   if (!known) {
     Serial.println("ERR UNKNOWN " + cmd);
@@ -274,9 +345,8 @@ void handleCommand(String line) {
     zAxis.setSpeed(-Z_HOME_SPEED_MM_S * STEPS_PER_MM);
     task = HOME_Z;
   } else if (cmd == "CLAMP") {
-    startClamp(arg.toInt() == 1);
-  } else if (cmd == "CJOG") {
-    startClampJog(arg);
+    if (clampJogBusy) Serial.println("ERR BUSY");
+    else startClamp(arg.toInt() == 1);
   } else if (!homed) {
     Serial.println("ERR NOTHOMED");
   } else if (cmd == "ZTOP") {
@@ -291,6 +361,27 @@ void handleCommand(String line) {
     startJog(true, cmd == "ZJOG", arg);
   } else if (cmd == "XJOG" || cmd == "XGO") {
     startJog(false, cmd == "XJOG", arg);
+  }
+}
+
+// GRIP1 · BREAK1 · RETREAT1 · ALIGN1 단계 진행: 앞 단계가 끝났으면(IDLE) 다음 단계를 보낸다.
+// 보낸 단계가 시작되지 않으면(범위 밖 · NOTHOMED 등, 그 ERR 줄은 이미 나감) 거기서 멈추고 ERR <이름>
+void runMacro() {
+  if (!macroName || task != IDLE || clampJogBusy) return;
+  if (macroIdx >= macroCount) {
+    Serial.printf("OK %s\n", macroName);
+    macroName = nullptr;
+    return;
+  }
+  bool together;
+  do {
+    const char* step = macroSteps[macroIdx++];
+    together = step[0] == '+';
+    handleCommand(String(together ? step + 1 : step));
+  } while (together && macroIdx < macroCount);
+  if (task == IDLE && !clampJogBusy) {
+    Serial.printf("ERR %s\n", macroName);
+    macroName = nullptr;
   }
 }
 
@@ -455,6 +546,11 @@ void runTask() {
     rotBusy = false;
     Serial.println("OK ROT");
   }
+  if (clampJogBusy && millis() - clampJogStartMs >= clampJogDurationMs) {
+    clampMotor(0, 0);
+    clampJogBusy = false;
+    Serial.println(clampJogReply);
+  }
 }
 
 void checkStartButton() {
@@ -507,5 +603,6 @@ void loop() {
   checkSafety();
   readSerial();
   if (!stopped) runTask();
+  if (!stopped) runMacro();
   checkStartButton();
 }

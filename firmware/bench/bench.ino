@@ -28,8 +28,8 @@ const int PIN_LIM_Z = 15;  // 눌리면 LOW (INPUT_PULLUP)
 const int PIN_LIM_X = 16;
 const int PIN_START = 21;
 
-// 방향: ampt/config.h Z_DIR_INVERT · X_DIR_INVERT와 같게 (11/3 기구에서 X가 반대 → true)
-const bool Z_DIR_INVERT = false;
+// 방향: ampt/config.h Z_DIR_INVERT · X_DIR_INVERT와 같게 (11/3 기구에서 X가 반대 → true, 11/4 오후 Z도 반대 → true)
+const bool Z_DIR_INVERT = true;
 const bool X_DIR_INVERT = true;
 const float STEPS_PER_REV = 200.0 * 16;
 const float SPEED_REV_S = 2.0;   // 120 rpm
