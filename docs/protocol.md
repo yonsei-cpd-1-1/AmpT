@@ -23,7 +23,7 @@ Pico는 보이는 영문 · 숫자 · 기호만 받고 제어 문자(Ctrl+C 등)
 | `RETREAT1` | **시험용** 1 mL 후퇴: 클램프를 열면서(`CJOG -4000`) 동시에 `XGO 5.0`(잡기 자리보다 3바퀴 뒤), 이어서 남은 `CJOG -1000`. 여는 시간 5000 ms (`RETREAT1_CLAMP_MS`, 11/4 20:50 8000 → 5000 — 앰플을 문 채 조인 시간은 일부 헛돌아서 조인 만큼 다 열면 너무 열림). 순서: `GRIP1` → `BREAK1` → `RETREAT1` | `OK CJOG …` · `OK XGO …` · `OK CJOG …` 다음 `OK RETREAT1` / `ERR RETREAT1` |
 | `ALIGN1` | **시험용** 다음 앰플(2 mL) 높이로: `ZGO 12.5` (Z만, `config.h` `ALIGN1_Z_MM`). 전체 순서: `HOME` → `GRIP1` → `BREAK1` → `RETREAT1` → `ALIGN1` | `OK ZGO …` 다음 `OK ALIGN1` / `ERR ALIGN1` |
 | `SERIES1` | **시험용** 처음부터 끝까지: `HOME` → `GRIP1` → `BREAK1` → `RETREAT1` → `ALIGN1` (각 단계 줄은 그대로 나옴). HOME부터 하므로 HOME 전에도 됨 | 단계별 `OK …` 다음 `OK SERIES1` / `ERR SERIES1` |
-| `SERIES3` | **시험용** (11/4 21:13 시험): `HOME` → `GRIP1` → `BREAK1` → `XGO 5.0`(X를 **먼저** 끝까지) → 1.5초 기다림 → 클램프 4.8초 열기(`CJOG -4000` · `CJOG -800`) → `ALIGN1`. RETREAT1처럼 X와 동시에 열면 푸셔가 누르고 있어 앰플을 못 놓았다. 값은 `config.h` `SERIES3_*` | 단계별 `OK …` · `OK WAIT 1500 ms` 다음 `OK SERIES3` / `ERR SERIES3` |
+| `SERIES3` | **시험용** (11/4 21:13 시험): `HOME` → `GRIP1` → `BREAK1` → `XGO 5.0`(X를 **먼저** 끝까지) → 1.5초 기다림 → 클램프 4.8초 열기(`CJOG -4000` · `CJOG -800`) → `ALIGN1`. RETREAT1처럼 X와 동시에 열면 푸셔가 누르고 있어 앰플을 못 놓았다. 값은 `config.h` `SERIES3_*` | 단계별 `OK …` · `OK WAIT 1500 ms` 다음 `OK SERIES3` / `ERR SERIES3`. 매크로가 도는 동안 다른 명령은 `ERR BUSY` (`STOP` · `POS` · `STATUS` · `VAC`만 받음) |
 | `PUSH` | 파단 시도 | `BROKE 36.2` (파단력 N) / `NOBREAK` (정지값 43 N) / `NOBREAK LIMIT` (위치 제한) |
 | `VAC 1` / `VAC 0` | 청소기 켜기 / 끄기 | `OK VAC` |
 | `STATUS` | 상태 묻기 | `STATUS IDLE` / `STATUS BUSY` / `STATUS STOPPED` |

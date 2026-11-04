@@ -205,6 +205,7 @@ char macroSteps[MACRO_MAX_STEPS][32];
 int macroCount = 0;
 int macroIdx = 0;
 unsigned long macroWaitUntilMs = 0;
+bool macroStepRunning = false;  // runMacro가 단계를 보내는 중 (손으로 보낸 명령과 구별)
 
 void beginMacro(const char* name) {
   macroCount = 0;
@@ -308,6 +309,12 @@ void handleCommand(String line) {
   }
   if (stopped) {
     Serial.println("ERR STOPPED");
+    return;
+  }
+  // 매크로(GRIP1 · SERIES* 등)가 도는 동안 — 단계 사이 · WAIT 중 포함 — 손으로 보낸 이동 명령은 받지 않는다.
+  // 안 막으면 WAIT 동안 축이 IDLE이라 XGO · CJOG 등이 그대로 돌고, 끝나면 매크로가 다음 단계로 넘어간다 (STOP · POS · STATUS · VAC은 받음)
+  if (macroName && !macroStepRunning && cmd != "VAC") {
+    Serial.println("ERR BUSY");
     return;
   }
 
@@ -438,7 +445,9 @@ void runMacro() {
   do {
     const char* step = macroSteps[macroIdx++];
     together = step[0] == '+';
+    macroStepRunning = true;
     handleCommand(String(together ? step + 1 : step));
+    macroStepRunning = false;
   } while (together && macroIdx < macroCount);
   if (task == IDLE && !clampJogBusy) {
     Serial.printf("ERR %s\n", macroName);
