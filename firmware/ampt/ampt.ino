@@ -254,6 +254,8 @@ void handleCommand(String line) {
     bool wasHoming = task == HOME_Z || task == HOME_Z_BACK || task == HOME_X || task == HOME_X_BACK;
     haltAxis(zAxis);
     haltAxis(xAxis);
+    haltAxis(rotAxis);  // 회전도 멈춤 (11/4)
+    rotBusy = false;
     clampMotor(0, 0);
     clampJogBusy = false;
     macroName = nullptr;
@@ -294,7 +296,22 @@ void handleCommand(String line) {
       Serial.println("ERR BUSY");
       return;
     }
-    rotAxis.move(lround(arg.toFloat() / 360.0 * ROT_STEPS_PER_REV));
+    // ROT <deg> [deg/s] — 속도를 안 붙이면 예전과 같은 기본 속도 (cycle.py는 그대로)
+    arg.trim();
+    int sp = arg.indexOf(' ');
+    float deg = (sp < 0 ? arg : arg.substring(0, sp)).toFloat();
+    float stepsPerS = ROT_SPEED_STEPS_S;
+    if (sp >= 0) {
+      float degS = arg.substring(sp + 1).toFloat();
+      if (degS < ROT_SPEED_MIN_DEG_S || degS > ROT_SPEED_MAX_DEG_S) {
+        Serial.printf("ERR SPEED (%.0f~%.0f deg/s)\n", ROT_SPEED_MIN_DEG_S, ROT_SPEED_MAX_DEG_S);
+        return;
+      }
+      stepsPerS = degS / 360.0 * ROT_STEPS_PER_REV;
+    }
+    rotAxis.setMaxSpeed(stepsPerS);
+    rotAxis.setAcceleration(sp < 0 ? ROT_ACCEL_STEPS_S2 : stepsPerS * 2.0);
+    rotAxis.move(lround(deg / 360.0 * ROT_STEPS_PER_REV));
     rotBusy = true;
     return;
   }

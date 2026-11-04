@@ -127,8 +127,14 @@ const long LOADCELL_SATURATED_COUNTS = 8300000;
 
 // ---------- 회전 (28BYJ-48 + ULN2003, 하프스텝) ----------
 const float ROT_STEPS_PER_REV = 4096.0;  // 실측 10/30: ROT 3600 뒤 깃발이 제자리 (4076이면 +18°)
-const float ROT_SPEED_STEPS_S = 800.0;
-const float ROT_ACCEL_STEPS_S2 = 1600.0;
+// 기본 속도 120°/s (속도를 안 붙인 ROT, cycle.py) — 11/4 기구에서 ROT <deg> <deg/s>로 올려 보고 박도울이 정함.
+// 그 전 800 스텝/s (≈ 70°/s)
+const float ROT_SPEED_STEPS_S = 120.0 / 360.0 * ROT_STEPS_PER_REV;  // ≈ 1365 스텝/s, 한 바퀴 3 s
+const float ROT_ACCEL_STEPS_S2 = ROT_SPEED_STEPS_S * 2.0;           // 0.5 s에 최고 속도
+// ROT <deg> [deg/s] (11/4 시험용): 속도를 붙이면 이 범위 안에서. 가속은 속도 × 2 (늘 0.5 s에 최고 속도).
+// 28BYJ는 너무 빠르면 윙 소리만 내고 안 돈다(스텝을 놓침 — 고장은 아님). 홀더 자석 클러치도 미끄러질 수 있다
+const float ROT_SPEED_MIN_DEG_S = 5.0;
+const float ROT_SPEED_MAX_DEG_S = 180.0;  // = 2048 스텝/s, 한 바퀴 2초
 
 // ---------- 클램프 (N20, 시간으로 조임) ----------
 // 11/1 책상 (기구 없이): N20 → TC1508A MOTOR-A, 6.0 V. CLAMP 1 = 축을 축 쪽에서 볼 때 시계 방향.

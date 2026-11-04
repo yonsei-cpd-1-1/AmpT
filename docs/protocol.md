@@ -11,12 +11,12 @@ Pico는 보이는 영문 · 숫자 · 기호만 받고 제어 문자(Ctrl+C 등)
 | `ZTOP` | Z 캐리지 맨 위 = 원점 스위치보다 `Z_PARK_MM`(5 mm) 아래 (카트리지 밀기 전 필수). 스위치 높이까지는 `HOME` 때만 간다 | `OK ZTOP` |
 | `INDEX` | 카트리지 1칸 — **2차 발표 시제품에는 없음** (손으로 민다) | `ERR NOTSUPPORTED` |
 | `LIFT 42.0` | Z 캐리지를 규격 높이로 (노치 높이 기준, mm) | `OK LIFT` |
-| `ROT 137.0` | 대기 칸 홀더 회전 (°, 상대각). `LIFT` 등과 동시에 실행 | `OK ROT` |
+| `ROT 137.0 [deg/s]` | 대기 칸 홀더 회전 (°, 상대각). `LIFT` 등과 동시에 실행. HOME 없이 됨. 속도를 붙이면 5~180 °/s (가속은 0.5 s에 최고 속도), 없으면 **120 °/s** (11/4 기구에서 정함, 그 전 약 70) | `OK ROT` / `ERR SPEED (5~180 deg/s)` |
 | `CLAMP 1` / `CLAMP 0` | 두 조 닫기 / 열기 (N20) | `OK CLAMP` |
 | `CJOG <ms> [pwm]` | **시험용** 클램프 조금씩: + 닫기 · − 열기 (최대 4000 ms, pwm 기본 `CLAMP_PWM`), `CJOG 0` = 누적 지우기. HOME 없이 됨. **`ROT`처럼 Z · X와 따로 돈다** (11/4) → CJOG 중에도 `XJOG` 등을 받고, 그 반대도 된다. 같은 N20인 `CLAMP`와는 서로 `ERR BUSY` | `OK CJOG +50 ms pwm 128, total +350 ms` (끝났을 때) |
 | `ZJOG <mm> [mm/s]` · `XJOG <mm> [mm/s]` | **시험용** 지금 자리에서 Z · X를 mm만큼 (Z + = 아래, X + = 앰플 쪽). 속도 0.1~10 mm/s, 없으면 2 mm/s. HOME 뒤에만. 갈 수 있는 곳: Z 5 ~ 30.25 mm, X 5 ~ 30 mm (원점 스위치 기준, 마지노선 그대로. **X 30은 11/4 임시**) | `OK ZJOG Z 12.000 X 5.000 mm` |
 | `ZGO <mm> [mm/s]` · `XGO <mm> [mm/s]` | **시험용** 원점 스위치에서 그 위치로 (범위 · 속도는 위와 같음) | `OK XGO Z 12.000 X 8.900 mm` |
-| `STOP` | **시험용** 도는 Z · X · 클램프 · `GRIP1` · `BREAK1`을 그 자리에서 멈춤 (BUSY여도 받음). 위치는 그대로라 HOME 다시 안 해도 됨 (HOME 도중이면 다시) | `OK STOP Z … X … mm` |
+| `STOP` | **시험용** 도는 Z · X · 회전 · 클램프 · `GRIP1` · `BREAK1`을 그 자리에서 멈춤 (BUSY여도 받음). 위치는 그대로라 HOME 다시 안 해도 됨 (HOME 도중이면 다시) | `OK STOP Z … X … mm` |
 | `POS` | 지금 위치 (원점 스위치에서 mm) | `POS Z 12.000 X 5.000 mm` |
 | `GRIP1` | **시험용** 1 mL 잡기 (11/4): `XGO 5` → `ZGO 21.5` → `CJOG 3000 255` → `XGO 9.5`. 값은 `config.h` `GRIP1_*`. HOME 뒤에만, **클램프가 열린 상태에서** (시간으로만 조인다) | 단계별 `OK XGO …` · `OK ZGO …` · `OK CJOG …` 다음 `OK GRIP1` / 단계가 못 시작하면 `ERR GRIP1` |
 | `BREAK1` | **시험용** 1 mL 파단 (11/4 09:38 이 값으로 깨짐): `GRIP1` 상태에서 `CJOG 3500 255`와 `XGO 21.5 5`를 **동시에**. 로드셀 판정 없음 | `OK CJOG …` · `OK XGO …` 다음 `OK BREAK1` / `ERR BREAK1` |
